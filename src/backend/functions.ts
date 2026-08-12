@@ -2,26 +2,6 @@ import { query, mutation, action, v } from "@quiver/server";
 
 const LITERAL_ENDPOINT = "https://literal.club/graphql/";
 
-const bookInput = v.object({
-  literalId: v.string(),
-  title: v.string(),
-  subtitle: v.optional(v.string()),
-  authors: v.array(v.string()),
-  coverUrl: v.optional(v.string()),
-  isbn10: v.optional(v.string()),
-  isbn13: v.optional(v.string()),
-  pageCount: v.optional(v.number()),
-  publishedDate: v.optional(v.string()),
-  publisher: v.optional(v.string()),
-  description: v.optional(v.string()),
-});
-
-const shelfStatus = v.union(
-  v.literal("want"),
-  v.literal("reading"),
-  v.literal("read"),
-);
-
 const SEARCH_QUERY = `
   query SearchBooks($query: String!) {
     searchBookV2(query: $query) {
@@ -118,7 +98,23 @@ async function upsertBook(
 }
 
 export const addToShelf = mutation({
-  args: { caller: v.string(), book: bookInput, status: shelfStatus },
+  args: {
+    caller: v.string(),
+    book: v.object({
+      literalId: v.string(),
+      title: v.string(),
+      subtitle: v.optional(v.string()),
+      authors: v.array(v.string()),
+      coverUrl: v.optional(v.string()),
+      isbn10: v.optional(v.string()),
+      isbn13: v.optional(v.string()),
+      pageCount: v.optional(v.number()),
+      publishedDate: v.optional(v.string()),
+      publisher: v.optional(v.string()),
+      description: v.optional(v.string()),
+    }),
+    status: v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+  },
   handler: async (ctx, { caller, book, status }) => {
     const bookId = await upsertBook(ctx, book);
 
@@ -155,7 +151,9 @@ export const updateShelfStatus = mutation({
   args: {
     caller: v.string(),
     bookId: v.id("books"),
-    status: v.optional(shelfStatus),
+    status: v.optional(
+      v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+    ),
     progressPercent: v.optional(v.number()),
   },
   handler: async (ctx, { caller, bookId, status, progressPercent }) => {
@@ -249,7 +247,11 @@ export const shareFinishedToChat = mutation({
 });
 
 export const channelShelf = query({
-  args: { status: v.optional(shelfStatus) },
+  args: {
+    status: v.optional(
+      v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+    ),
+  },
   handler: async (ctx, { status }) => {
     const shelvings = status
       ? await ctx.db
