@@ -56,7 +56,8 @@ type Review = {
 type View =
   | { tab: "discover" }
   | { tab: "shelves" }
-  | { tab: "detail"; bookId: string };
+  | { tab: "detail"; bookId: string }
+  | { tab: "preview"; result: SearchResult };
 
 const STATUS_LABEL: Record<Shelving["status"], string> = {
   want: "Want to read",
@@ -119,7 +120,7 @@ export default function App() {
 
   return (
     <main style={styles.shell}>
-      {view.tab !== "detail" && (
+      {(view.tab === "discover" || view.tab === "shelves") && (
         <nav style={styles.tabs}>
           <TabButton
             active={view.tab === "discover"}
@@ -137,7 +138,10 @@ export default function App() {
       )}
 
       {view.tab === "discover" && (
-        <Discover onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
+        <Discover
+          onOpenBook={(bookId) => setView({ tab: "detail", bookId })}
+          onPreviewBook={(result) => setView({ tab: "preview", result })}
+        />
       )}
       {view.tab === "shelves" && (
         <Shelves onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
@@ -146,6 +150,13 @@ export default function App() {
         <BookDetail
           bookId={view.bookId}
           onBack={() => setView({ tab: "shelves" })}
+        />
+      )}
+      {view.tab === "preview" && (
+        <BookPreview
+          result={view.result}
+          onBack={() => setView({ tab: "discover" })}
+          onAdded={(bookId) => setView({ tab: "detail", bookId })}
         />
       )}
     </main>
@@ -262,7 +273,13 @@ function ShelfControls({
   );
 }
 
-function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
+function Discover({
+  onOpenBook,
+  onPreviewBook,
+}: {
+  onOpenBook: (bookId: string) => void;
+  onPreviewBook: (result: SearchResult) => void;
+}) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -373,8 +390,8 @@ function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
           return (
             <div key={r.literalId} style={styles.card}>
               <div
-                style={{ display: "flex", gap: 10, cursor: addedBookId ? "pointer" : "default" }}
-                onClick={() => addedBookId && onOpenBook(addedBookId)}
+                style={{ display: "flex", gap: 10, cursor: "pointer" }}
+                onClick={() => (addedBookId ? onOpenBook(addedBookId) : onPreviewBook(r))}
               >
                 <Cover url={r.coverUrl} title={r.title} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -632,11 +649,87 @@ function ProgressEditor({ bookId, value }: { bookId: string; value?: number }) {
   );
 }
 
-function BackBar({ onBack }: { onBack: () => void }) {
+function BackBar({ onBack, label = "Shelves" }: { onBack: () => void; label?: string }) {
   return (
     <button onClick={onBack} style={styles.backButton}>
-      ← Shelves
+      ← {label}
     </button>
+  );
+}
+
+function BookPreview({
+  result,
+  onBack,
+  onAdded,
+}: {
+  result: SearchResult;
+  onBack: () => void;
+  onAdded: (bookId: string) => void;
+}) {
+  const addToShelf = useMutation("addToShelf");
+  const [pending, setPending] = useState<Shelving["status"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(status: Shelving["status"]) {
+    setPending(status);
+    setError(null);
+    try {
+      const bookId = await addToShelf({
+        book: {
+          literalId: result.literalId,
+          title: result.title,
+          subtitle: result.subtitle,
+          authors: result.authors,
+          coverUrl: result.coverUrl,
+          isbn10: result.isbn10,
+          isbn13: result.isbn13,
+          pageCount: result.pageCount,
+          publishedDate: result.publishedDate,
+          publisher: result.publisher,
+          description: result.description,
+        },
+        status,
+      });
+      onAdded(bookId as string);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't update shelf.");
+      setPending(null);
+    }
+  }
+
+  return (
+    <div style={styles.panel}>
+      <BackBar onBack={onBack} label="Discover" />
+      <div style={{ display: "flex", gap: 14 }}>
+        <Cover url={result.coverUrl} title={result.title} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={styles.detailTitle}>{result.title}</div>
+          {result.subtitle && <div style={styles.mutedText}>{result.subtitle}</div>}
+          <div style={styles.mutedText}>{result.authors.join(", ")}</div>
+        </div>
+      </div>
+
+      {result.description && <p style={styles.description}>{result.description}</p>}
+
+      <Section title="Add to your shelf">
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(["want", "reading", "read"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => pick(s)}
+              disabled={pending !== null}
+              style={{
+                ...styles.pillButton,
+                ...(pending === s ? styles.pillButtonPending : {}),
+              }}
+            >
+              {pending === s ? "Adding…" : STATUS_LABEL[s]}
+            </button>
+          ))}
+        </div>
+        {error && <div style={styles.errorBox}>{error}</div>}
+      </Section>
+    </div>
   );
 }
 
