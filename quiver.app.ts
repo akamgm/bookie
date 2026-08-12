@@ -56,11 +56,12 @@ const manifest: AppManifest = {
   chat: {
     write: true,
   },
+  // LITERAL_TOKEN: bearer token for the literal.club GraphQL API, used
+  // server-side only by the searchBooks action.
   env: {
     LITERAL_TOKEN: {
       scope: "server",
       required: true,
-      description: "Bearer token for the literal.club GraphQL API.",
     },
   },
 };
