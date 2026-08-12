@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useAppContext,
   useQuery,
   useMutation,
   useAction,
   useMember,
+  useStagePath,
+  useAppPath,
   Avatar,
 } from "@quiver/react";
+
+function panelBaseFrom(url: string): string {
+  if (!url) return "";
+  const match = /\/~\/c\/([^/?#]+)\/([^/?#]+)/.exec(url);
+  if (!match) return "";
+  return "/~/c/" + match[1] + "/" + match[2];
+}
 
 type SearchResult = {
   literalId: string;
@@ -58,6 +67,47 @@ const STATUS_LABEL: Record<Shelving["status"], string> = {
 export default function App() {
   const context = useAppContext();
   const [view, setView] = useState<View>({ tab: "discover" });
+
+  // Record panel base so the backend can generate links back to this channel's app instance.
+  const staged: any = useStagePath();
+  const recordPanelBase = useMutation("recordPanelBase");
+  const fromStage = typeof staged === "string" ? staged : staged && staged.path ? staged.path : "";
+  const referrer = typeof document === "undefined" ? "" : document.referrer;
+  const base = panelBaseFrom(fromStage) || panelBaseFrom(referrer);
+
+  useEffect(() => {
+    if (base) {
+      recordPanelBase({ base }).catch((err) => {
+        console.error("Failed to record panel base:", err);
+      });
+    }
+  }, [base]);
+
+  // Deep-link a book's detail view via /book/:id, so chat posts can jump
+  // straight to a specific book instead of always landing on Discover.
+  const nav: any = useAppPath();
+  const path: string = (nav && nav.path) || "/";
+
+  useEffect(() => {
+    if (nav && nav.push) {
+      const targetPath = view.tab === "detail" ? `/book/${view.bookId}` : "/";
+      if (path !== targetPath) {
+        nav.push(targetPath);
+      }
+    }
+  }, [view]);
+
+  useEffect(() => {
+    const bookMatch = /^\/book\/([^/]+)/.exec(path);
+    if (bookMatch) {
+      const bookId = bookMatch[1];
+      if (!(view.tab === "detail" && view.bookId === bookId)) {
+        setView({ tab: "detail", bookId });
+      }
+    } else if (path === "/" && view.tab === "detail") {
+      setView({ tab: "discover" });
+    }
+  }, [path]);
 
   if (!context) {
     return (
@@ -219,7 +269,11 @@ function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const search = useAction("searchBooks");
   const addToShelf = useMutation("addToShelf");
+  const removeFromShelf = useMutation("removeFromShelf");
   const [addedIds, setAddedIds] = useState<Record<string, string>>({});
+  const [addedStatus, setAddedStatus] = useState<Record<string, Shelving["status"]>>({});
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [addErrors, setAddErrors] = useState<Record<string, string>>({});
 
   async function runSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -236,24 +290,51 @@ function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
     }
   }
 
-  async function add(result: SearchResult, status: Shelving["status"]) {
-    const bookId = await addToShelf({
-      book: {
-        literalId: result.literalId,
-        title: result.title,
-        subtitle: result.subtitle,
-        authors: result.authors,
-        coverUrl: result.coverUrl,
-        isbn10: result.isbn10,
-        isbn13: result.isbn13,
-        pageCount: result.pageCount,
-        publishedDate: result.publishedDate,
-        publisher: result.publisher,
-        description: result.description,
-      },
-      status,
+  async function toggleStatus(result: SearchResult, status: Shelving["status"]) {
+    const key = `${result.literalId}:${status}`;
+    const bookId = addedIds[result.literalId];
+    const isActive = addedStatus[result.literalId] === status;
+
+    setPendingKey(key);
+    setAddErrors((m) => {
+      const { [result.literalId]: _removed, ...rest } = m;
+      return rest;
     });
-    setAddedIds((m) => ({ ...m, [result.literalId]: bookId as string }));
+    try {
+      if (isActive && bookId) {
+        await removeFromShelf({ bookId });
+        setAddedStatus((m) => {
+          const { [result.literalId]: _removed, ...rest } = m;
+          return rest;
+        });
+      } else {
+        const newBookId = await addToShelf({
+          book: {
+            literalId: result.literalId,
+            title: result.title,
+            subtitle: result.subtitle,
+            authors: result.authors,
+            coverUrl: result.coverUrl,
+            isbn10: result.isbn10,
+            isbn13: result.isbn13,
+            pageCount: result.pageCount,
+            publishedDate: result.publishedDate,
+            publisher: result.publisher,
+            description: result.description,
+          },
+          status,
+        });
+        setAddedIds((m) => ({ ...m, [result.literalId]: newBookId as string }));
+        setAddedStatus((m) => ({ ...m, [result.literalId]: status }));
+      }
+    } catch (err) {
+      setAddErrors((m) => ({
+        ...m,
+        [result.literalId]: err instanceof Error ? err.message : "Couldn't update shelf.",
+      }));
+    } finally {
+      setPendingKey((k) => (k === key ? null : k));
+    }
   }
 
   return (
@@ -286,6 +367,9 @@ function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
       <div style={styles.list}>
         {(results ?? []).map((r) => {
           const addedBookId = addedIds[r.literalId];
+          const currentStatus = addedStatus[r.literalId];
+          const isPendingThisBook = pendingKey?.startsWith(`${r.literalId}:`) ?? false;
+          const error = addErrors[r.literalId];
           return (
             <div key={r.literalId} style={styles.card}>
               <div
@@ -300,16 +384,30 @@ function Discover({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {(["want", "reading", "read"] as const).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => add(r, s)}
-                    style={styles.pillButton}
-                  >
-                    + {STATUS_LABEL[s]}
-                  </button>
-                ))}
+                {(["want", "reading", "read"] as const).map((s) => {
+                  const key = `${r.literalId}:${s}`;
+                  const isPending = pendingKey === key;
+                  const isAdded = currentStatus === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => toggleStatus(r, s)}
+                      disabled={isPendingThisBook}
+                      style={{
+                        ...styles.pillButton,
+                        ...(isAdded ? styles.pillButtonActive : {}),
+                        ...(isPending ? styles.pillButtonPending : {}),
+                        ...(isPendingThisBook && !isPending ? styles.pillButtonDisabled : {}),
+                      }}
+                    >
+                      {isPending
+                        ? (isAdded ? "Removing…" : "Adding…")
+                        : isAdded ? `✓ ${STATUS_LABEL[s]}` : `+ ${STATUS_LABEL[s]}`}
+                    </button>
+                  );
+                })}
               </div>
+              {error && <div style={styles.errorBox}>{error}</div>}
             </div>
           );
         })}
@@ -678,6 +776,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--accent)",
     borderColor: "var(--accent)",
     color: "#fff",
+  },
+  pillButtonDisabled: {
+    opacity: 0.5,
+    cursor: "default",
+  },
+  pillButtonPending: {
+    opacity: 0.7,
+    cursor: "wait",
   },
   filterRow: { display: "flex", gap: 6, flexWrap: "wrap" },
   shelverRow: {

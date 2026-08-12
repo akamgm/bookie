@@ -239,9 +239,60 @@ export const shareFinishedToChat = mutation({
         q.eq("handle", caller).eq("bookId", bookId),
       )
       .first();
-    const stars = review ? ` — ${"★".repeat(Math.round(review.rating))}` : "";
+
+    const isSameDayUTC = (t1: number, t2: number) => {
+      const d1 = new Date(t1);
+      const d2 = new Date(t2);
+      return d1.getUTCFullYear() === d2.getUTCFullYear() &&
+             d1.getUTCMonth() === d2.getUTCMonth() &&
+             d1.getUTCDate() === d2.getUTCDate();
+    };
+
+    const formatFriendlyDate = (timestamp: number) => {
+      const d = new Date(timestamp);
+      const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+      ];
+      return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+    };
+
+    const authors = book.authors.length > 0 ? ` by ${book.authors.join(", ")}` : "";
+
+    const settings = await ctx.db.query("settings").first();
+    const panelBase = settings?.panelBase || "";
+    const titleText = panelBase
+      ? `[${book.title}](${panelBase}/book/${bookId})`
+      : `**${book.title}**`;
+
+    let bodyText = `📚 @${caller} finished ${titleText}${authors}`;
+
+    if (shelving.finishedAt !== undefined && !isSameDayUTC(shelving.finishedAt, Date.now())) {
+      bodyText += ` on ${formatFriendlyDate(shelving.finishedAt)}`;
+    }
+
+    if (review) {
+      const fullStars = Math.round(review.rating);
+      const stars = "★".repeat(fullStars) + "☆".repeat(5 - fullStars);
+      bodyText += ` — ${stars}`;
+    }
+
+    if (review?.body && review.body.trim() !== "") {
+      bodyText += `\n\n_${review.body.trim()}_`;
+    }
+
+    const attachments = [];
+    if (book.coverUrl) {
+      attachments.push({
+        type: "image",
+        src: book.coverUrl,
+        alt: book.title,
+      });
+    }
+
     await ctx.platform.chat.send({
-      body: `📚 @${caller} finished **${book.title}**${stars}`,
+      body: bodyText,
+      ...(attachments.length > 0 ? { attachments } : {}),
     });
   },
 });
@@ -327,5 +378,34 @@ export const myShelvings = query({
       if (book) out.push({ ...row, book });
     }
     return out;
+  },
+});
+
+// The iframe tells the server where it is mounted, so chat posts can link back
+// into it. Idempotent: the panel calls this on every open and it only writes
+// when the path actually changed.
+export const recordPanelBase = mutation({
+  args: { base: v.string() },
+  handler: async (ctx, { base }) => {
+    const clean = base.replace(/\/+$/, "");
+    if (!clean.startsWith("/")) return { panelBase: "" };
+    const row = await ctx.db.query("settings").first();
+    if (row) {
+      if (row.panelBase === clean) return { panelBase: clean };
+      await ctx.db.patch(row._id, { panelBase: clean });
+    } else {
+      await ctx.db.insert("settings", { panelBase: clean });
+    }
+    return { panelBase: clean };
+  },
+});
+
+// Not manifest-declared — only reached server-side (slash commands, chat
+// posts) via ctx.runQuery, never client-addressable.
+export const getPanelBase = query({
+  args: {},
+  handler: async (ctx) => {
+    const row = await ctx.db.query("settings").first();
+    return row?.panelBase ?? "";
   },
 });

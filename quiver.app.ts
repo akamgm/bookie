@@ -47,6 +47,10 @@ const manifest: AppManifest = {
       summary:
         "Post a message to the channel celebrating that the calling member finished a book.",
     },
+    recordPanelBase: {
+      summary:
+        "Record the channel panel's base URL for generating chat deep links.",
+    },
   },
   actions: {
     searchBooks: {

@@ -47,4 +47,10 @@ export default defineSchema({
   })
     .index("by_bookId", ["bookId"])
     .index("by_handle_book", ["handle", "bookId"]),
+
+  // Channel-specific settings (such as the base URL of the channel's app
+  // panel, used to build deep links back into it from chat posts).
+  settings: defineTable({
+    panelBase: v.optional(v.string()),
+  }),
 });
