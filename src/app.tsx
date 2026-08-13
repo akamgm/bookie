@@ -54,7 +54,7 @@ type Review = {
 };
 
 type View =
-  | { tab: "discover" }
+  | { tab: "discover"; query?: string }
   | { tab: "shelves" }
   | { tab: "detail"; bookId: string };
 
@@ -143,7 +143,10 @@ export default function App() {
       )}
 
       {view.tab === "discover" && (
-        <Discover onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
+        <Discover
+          initialQuery={view.query}
+          onOpenBook={(bookId) => setView({ tab: "detail", bookId })}
+        />
       )}
       {view.tab === "shelves" && (
         <Shelves onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
@@ -152,6 +155,7 @@ export default function App() {
         <BookDetail
           bookId={view.bookId}
           onBack={() => setView({ tab: "shelves" })}
+          onSearchAuthor={(author) => setView({ tab: "discover", query: author })}
         />
       )}
     </main>
@@ -269,11 +273,13 @@ function ShelfControls({
 }
 
 function Discover({
+  initialQuery,
   onOpenBook,
 }: {
+  initialQuery?: string;
   onOpenBook: (bookId: string) => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SearchHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -284,19 +290,29 @@ function Discover({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
 
-  async function runSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!q.trim()) return;
+  async function searchFor(query: string) {
+    if (!query.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const r = await search({ query: q.trim() });
+      const r = await search({ query: query.trim() });
       setResults(r as SearchHit[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    if (initialQuery) {
+      void searchFor(initialQuery);
+    }
+  }, [initialQuery]);
+
+  function runSearch(e: React.FormEvent) {
+    e.preventDefault();
+    void searchFor(q);
   }
 
   async function toggleStatus(result: SearchHit, status: Shelving["status"]) {
@@ -490,7 +506,15 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
   );
 }
 
-function BookDetail({ bookId, onBack }: { bookId: string; onBack: () => void }) {
+function BookDetail({
+  bookId,
+  onBack,
+  onSearchAuthor,
+}: {
+  bookId: string;
+  onBack: () => void;
+  onSearchAuthor: (author: string) => void;
+}) {
   const context = useAppContext();
   const detail = useQuery("bookDetail", context ? { bookId } : "skip") as
     | {
@@ -547,7 +571,20 @@ function BookDetail({ bookId, onBack }: { bookId: string; onBack: () => void }) 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.detailTitle}>{book.title}</div>
           {book.subtitle && <div style={styles.mutedText}>{book.subtitle}</div>}
-          <div style={styles.mutedText}>{book.authors.join(", ")}</div>
+          <div style={styles.mutedText}>
+            {book.authors.map((author, index) => (
+              <span key={author}>
+                {index > 0 && ", "}
+                <button
+                  type="button"
+                  onClick={() => onSearchAuthor(author)}
+                  style={styles.authorLink}
+                >
+                  {author}
+                </button>
+              </span>
+            ))}
+          </div>
           <div style={{ marginTop: 6 }}>
             <Stars value={avgRating} />
             {ratingCount > 0 && (
@@ -687,6 +724,15 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--app-bg)",
     color: "var(--text-primary)",
     fontSize: "var(--font-size-sm)",
+  },
+  authorLink: {
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    textDecoration: "underline",
+    cursor: "pointer",
   },
   primaryButton: {
     padding: "var(--space-sm) var(--space-md)",
