@@ -20,20 +20,6 @@ const SEARCH_QUERY = `
   }
 `;
 
-const bookInput = v.object({
-  literalId: v.string(),
-  title: v.string(),
-  subtitle: v.optional(v.string()),
-  authors: v.array(v.string()),
-  coverUrl: v.optional(v.string()),
-  isbn10: v.optional(v.string()),
-  isbn13: v.optional(v.string()),
-  pageCount: v.optional(v.number()),
-  publishedDate: v.optional(v.string()),
-  publisher: v.optional(v.string()),
-  description: v.optional(v.string()),
-});
-
 async function upsertBook(
   ctx: { db: any },
   book: {
@@ -62,7 +48,23 @@ async function upsertBook(
 // mutation via ctx.runMutation to cache every result as soon as it's
 // shown. Not manifest-declared — not client-addressable.
 export const cacheSearchResults = mutation({
-  args: { books: v.array(bookInput) },
+  args: {
+    books: v.array(
+      v.object({
+        literalId: v.string(),
+        title: v.string(),
+        subtitle: v.optional(v.string()),
+        authors: v.array(v.string()),
+        coverUrl: v.optional(v.string()),
+        isbn10: v.optional(v.string()),
+        isbn13: v.optional(v.string()),
+        pageCount: v.optional(v.number()),
+        publishedDate: v.optional(v.string()),
+        publisher: v.optional(v.string()),
+        description: v.optional(v.string()),
+      }),
+    ),
+  },
   handler: async (ctx, { books }) => {
     const ids: string[] = [];
     for (const book of books) {
@@ -134,7 +136,19 @@ export const searchBooks = action({
 export const addToShelf = mutation({
   args: {
     caller: v.string(),
-    book: bookInput,
+    book: v.object({
+      literalId: v.string(),
+      title: v.string(),
+      subtitle: v.optional(v.string()),
+      authors: v.array(v.string()),
+      coverUrl: v.optional(v.string()),
+      isbn10: v.optional(v.string()),
+      isbn13: v.optional(v.string()),
+      pageCount: v.optional(v.number()),
+      publishedDate: v.optional(v.string()),
+      publisher: v.optional(v.string()),
+      description: v.optional(v.string()),
+    }),
     status: v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
   },
   handler: async (ctx, { caller, book, status }) => {
