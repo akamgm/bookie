@@ -5,7 +5,11 @@ import type { MigrationContext } from "@quiver/server";
  * remains in place and becomes the member-scope partition key.
  */
 export default async function globalReviews(ctx: MigrationContext) {
-  const page = await ctx.migrationPage<{ _id: string }>("reviews");
+  const page = await ctx.migrationPage<{ _id: string }>(
+    "reviews",
+    ctx.migrationCursor,
+    16,
+  );
 
   for (const review of page.page) {
     await ctx.db.patch(review._id, { channelId: undefined });
