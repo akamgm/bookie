@@ -20,8 +20,8 @@ See `src/backend/schema.ts`.
 calls literal.club's GraphQL API (`searchBookV2`) with a bearer token
 from the required `LITERAL_TOKEN` env var (`scope: "server"`, never
 exposed to the iframe). Search results are ephemeral; a book is only
-cached into the `books` table once a member actually adds it to a
-shelf, via `addToShelf`.
+cached into the `books` table when a member opens its detail page, via
+`cacheBookDetails`, or adds it directly to a shelf, via `addToShelf`.
 
 ## Surfaces
 

@@ -17,15 +17,11 @@ review. See `README.md` for the data model and surfaces.
   action, using the server-scoped `LITERAL_TOKEN` env var. Never inline
   that token into the iframe (`scope: "iframe"` would expose it in
   devtools).
-- **Books are cached on search, not just on add.** `searchBooks` (an
-  action, so no `ctx.db`) calls the internal `cacheSearchResults`
-  mutation via `ctx.runMutation` to upsert every result into `books`,
-  keyed by `literalId`, and returns each result with its real `bookId`
-  attached. This is what lets Discover route a click straight to
-  `BookDetail` instead of a separate unsaved-preview screen. `addToShelf`
-  still upserts too (same `upsertBook` helper) so it works standalone —
-  the two paths are idempotent against each other via the
-  `by_literalId` lookup, not a race.
+- **Books are cached on detail view or add, not on search.** Search results
+  are ephemeral action return values. `cacheBookDetails` upserts the selected
+  result when its detail page is opened, while `addToShelf` upserts books
+  shelved directly from search. Both key books by `literalId`; never cache an
+  entire search result set.
 - **One shelving/review row per member-scoped `bookId`**, enforced by
   upsert logic against the `by_bookId` index in `addToShelf`,
   `updateShelfStatus`, and `rateBook`. `updateShelfStatus` upserts

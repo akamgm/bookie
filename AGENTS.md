@@ -17,10 +17,11 @@ review. See `README.md` for the data model and surfaces.
   action, using the server-scoped `LITERAL_TOKEN` env var. Never inline
   that token into the iframe (`scope: "iframe"` would expose it in
   devtools).
-- **Books are cached on add, not on search.** Search results are
-  ephemeral (an action return value); `addToShelf` is what upserts a
-  `books` row, keyed by `literalId`. Don't cache raw search results into
-  the table — only books someone actually shelves.
+- **Books are cached on detail view or add, not on search.** Search results
+  are ephemeral action return values. `cacheBookDetails` upserts the selected
+  result when its detail page is opened, while `addToShelf` upserts books
+  shelved directly from search. Both key books by `literalId`; never cache an
+  entire search result set.
 - **One shelving/review row per member-scoped `bookId`**, enforced by
   upsert logic against the `by_bookId` index in `addToShelf`,
   `updateShelfStatus`, and `rateBook`. Don't add a second insert path

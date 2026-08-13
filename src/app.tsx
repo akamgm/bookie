@@ -31,9 +31,7 @@ type SearchResult = {
 
 type Book = SearchResult & { _id: string };
 
-// What searchBooks actually returns: every result is cached on search now,
-// so it always carries a real bookId (see CLAUDE.md).
-type SearchHit = SearchResult & { bookId: string };
+type SearchHit = SearchResult;
 
 type Shelving = {
   status: "want" | "reading" | "read";
@@ -284,10 +282,13 @@ function Discover({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const search = useAction("searchBooks");
+  const cacheBookDetails = useMutation("cacheBookDetails");
   const addToShelf = useMutation("addToShelf");
   const removeFromShelf = useMutation("removeFromShelf");
   const [addedStatus, setAddedStatus] = useState<Record<string, Shelving["status"]>>({});
+  const [bookIds, setBookIds] = useState<Record<string, string>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
 
   async function searchFor(query: string) {
@@ -315,6 +316,28 @@ function Discover({
     void searchFor(q);
   }
 
+  async function openBook(result: SearchHit) {
+    if (openingId) return;
+    setOpeningId(result.literalId);
+    setAddErrors((m) => {
+      const { [result.literalId]: _removed, ...rest } = m;
+      return rest;
+    });
+    try {
+      const bookId = (await cacheBookDetails({ book: result })) as string;
+      setBookIds((m) => ({ ...m, [result.literalId]: bookId }));
+      onOpenBook(bookId);
+    } catch (err) {
+      setAddErrors((m) => ({
+        ...m,
+        [result.literalId]:
+          err instanceof Error ? err.message : "Couldn't open book details.",
+      }));
+    } finally {
+      setOpeningId((id) => (id === result.literalId ? null : id));
+    }
+  }
+
   async function toggleStatus(result: SearchHit, status: Shelving["status"]) {
     const key = `${result.literalId}:${status}`;
     const isActive = addedStatus[result.literalId] === status;
@@ -326,28 +349,19 @@ function Discover({
     });
     try {
       if (isActive) {
-        await removeFromShelf({ bookId: result.bookId });
+        const bookId = bookIds[result.literalId];
+        if (!bookId) throw new Error("Book cache was unavailable.");
+        await removeFromShelf({ bookId });
         setAddedStatus((m) => {
           const { [result.literalId]: _removed, ...rest } = m;
           return rest;
         });
       } else {
-        await addToShelf({
-          book: {
-            literalId: result.literalId,
-            title: result.title,
-            subtitle: result.subtitle,
-            authors: result.authors,
-            coverUrl: result.coverUrl,
-            isbn10: result.isbn10,
-            isbn13: result.isbn13,
-            pageCount: result.pageCount,
-            publishedDate: result.publishedDate,
-            publisher: result.publisher,
-            description: result.description,
-          },
+        const bookId = (await addToShelf({
+          book: result,
           status,
-        });
+        })) as string;
+        setBookIds((m) => ({ ...m, [result.literalId]: bookId }));
         setAddedStatus((m) => ({ ...m, [result.literalId]: status }));
       }
     } catch (err) {
@@ -389,13 +403,17 @@ function Discover({
       <div style={styles.list}>
         {(results ?? []).map((r) => {
           const currentStatus = addedStatus[r.literalId];
-          const isPendingThisBook = pendingKey?.startsWith(`${r.literalId}:`) ?? false;
+          const isPendingThisBook =
+            (pendingKey?.startsWith(`${r.literalId}:`) ?? false) ||
+            openingId === r.literalId;
           const error = addErrors[r.literalId];
           return (
             <div key={r.literalId} style={styles.card}>
-              <div
-                style={{ display: "flex", gap: 10, cursor: "pointer" }}
-                onClick={() => r.bookId && onOpenBook(r.bookId)}
+              <button
+                type="button"
+                style={styles.bookResultButton}
+                onClick={() => void openBook(r)}
+                disabled={openingId !== null}
               >
                 <Cover url={r.coverUrl} title={r.title} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -403,7 +421,7 @@ function Discover({
                   {r.subtitle && <div style={styles.mutedText}>{r.subtitle}</div>}
                   <div style={styles.mutedText}>{r.authors.join(", ")}</div>
                 </div>
-              </div>
+              </button>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                 {(["want", "reading", "read"] as const).map((s) => {
                   const key = `${r.literalId}:${s}`;
@@ -763,6 +781,18 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "var(--radius-md)",
     border: "1px solid var(--topbar-border)",
     background: "var(--app-bg)",
+  },
+  bookResultButton: {
+    width: "100%",
+    display: "flex",
+    gap: 10,
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
   },
   cardTitle: {
     fontSize: "var(--font-size-base)",

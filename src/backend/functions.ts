@@ -1,4 +1,4 @@
-import { query, mutation, action, v, api } from "@quiver/server";
+import { query, mutation, action, v } from "@quiver/server";
 
 const LITERAL_ENDPOINT = "https://literal.club/graphql/";
 
@@ -44,34 +44,23 @@ async function upsertBook(
   return ctx.db.insert("books", { ...book, cachedAt: Date.now() });
 }
 
-// Internal: searchBooks (an action) has no ctx.db, so it reaches this
-// mutation via ctx.runMutation to cache every result as soon as it's
-// shown. Not manifest-declared — not client-addressable.
-export const cacheSearchResults = mutation({
+export const cacheBookDetails = mutation({
   args: {
-    books: v.array(
-      v.object({
-        literalId: v.string(),
-        title: v.string(),
-        subtitle: v.optional(v.string()),
-        authors: v.array(v.string()),
-        coverUrl: v.optional(v.string()),
-        isbn10: v.optional(v.string()),
-        isbn13: v.optional(v.string()),
-        pageCount: v.optional(v.number()),
-        publishedDate: v.optional(v.string()),
-        publisher: v.optional(v.string()),
-        description: v.optional(v.string()),
-      }),
-    ),
+    book: v.object({
+      literalId: v.string(),
+      title: v.string(),
+      subtitle: v.optional(v.string()),
+      authors: v.array(v.string()),
+      coverUrl: v.optional(v.string()),
+      isbn10: v.optional(v.string()),
+      isbn13: v.optional(v.string()),
+      pageCount: v.optional(v.number()),
+      publishedDate: v.optional(v.string()),
+      publisher: v.optional(v.string()),
+      description: v.optional(v.string()),
+    }),
   },
-  handler: async (ctx, { books }) => {
-    const ids: string[] = [];
-    for (const book of books) {
-      ids.push(await upsertBook(ctx, book));
-    }
-    return ids;
-  },
+  handler: async (ctx, { book }) => upsertBook(ctx, book),
 });
 
 export const searchBooks = action({
@@ -111,7 +100,7 @@ export const searchBooks = action({
       authors: { name: string }[];
     }>;
 
-    const mapped = results.map((r) => ({
+    return results.map((r) => ({
       literalId: r.id,
       title: r.title,
       subtitle: r.subtitle ?? undefined,
@@ -124,12 +113,6 @@ export const searchBooks = action({
       publisher: r.publisher ?? undefined,
       description: r.description ?? undefined,
     }));
-
-    const bookIds = await ctx.runMutation(api.backend.functions.cacheSearchResults, {
-      books: mapped,
-    });
-
-    return mapped.map((r, i) => ({ ...r, bookId: bookIds[i] as string }));
   },
 });
 

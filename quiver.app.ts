@@ -28,6 +28,9 @@ const manifest: AppManifest = {
     },
   },
   mutations: {
+    cacheBookDetails: {
+      summary: "Cache book metadata when the calling member opens its detail page.",
+    },
     addToShelf: {
       summary:
         "Cache a book from search results and add it to the calling member's shelf.",
