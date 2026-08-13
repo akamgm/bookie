@@ -1,8 +1,8 @@
 import { defineSchema, defineTable, v } from "@quiver/server";
 
 export default defineSchema({
-  // Cached book metadata from literal.club. One row per distinct book this
-  // channel has ever searched-and-added, shared by every member.
+  // Cached book metadata from literal.club. Metadata is shared across the
+  // whole Quiver so every member-scoped library can reference the same book.
   books: defineTable({
     literalId: v.string(),
     title: v.string(),
@@ -16,12 +16,13 @@ export default defineSchema({
     publisher: v.optional(v.string()),
     description: v.optional(v.string()),
     cachedAt: v.number(),
-  }).index("by_literalId", ["literalId"]),
+  })
+    .scope("quiver")
+    .index("by_literalId", ["literalId"]),
 
-  // One row per (member, book): where that member has this book shelved.
+  // One row per book in the calling member's instance-wide library.
   shelvings: defineTable({
     bookId: v.id("books"),
-    handle: v.string(),
     status: v.union(
       v.literal("want"),
       v.literal("reading"),
@@ -32,21 +33,19 @@ export default defineSchema({
     finishedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
+    .scope("member")
     .index("by_bookId", ["bookId"])
-    .index("by_handle", ["handle"])
-    .index("by_status", ["status"])
-    .index("by_handle_book", ["handle", "bookId"]),
+    .index("by_status", ["status"]),
 
-  // One row per (member, book): that member's rating/review of the book.
+  // One row per book in the calling member's instance-wide reviews.
   reviews: defineTable({
     bookId: v.id("books"),
-    handle: v.string(),
     rating: v.number(),
     body: v.optional(v.string()),
     updatedAt: v.number(),
   })
-    .index("by_bookId", ["bookId"])
-    .index("by_handle_book", ["handle", "bookId"]),
+    .scope("member")
+    .index("by_bookId", ["bookId"]),
 
   // Channel-specific settings (such as the base URL of the channel's app
   // panel, used to build deep links back into it from chat posts).

@@ -4,10 +4,8 @@ import {
   useQuery,
   useMutation,
   useAction,
-  useMember,
   useStagePath,
   useAppPath,
-  Avatar,
 } from "@quiver/react";
 
 function panelBaseFrom(url: string): string {
@@ -38,21 +36,19 @@ type Book = SearchResult & { _id: string };
 type SearchHit = SearchResult & { bookId: string };
 
 type Shelving = {
-  handle: string;
   status: "want" | "reading" | "read";
   progressPercent?: number;
 };
 
 type ShelfRow = {
   book: Book;
-  shelvings: Shelving[];
+  shelving: Shelving;
   avgRating: number | null;
   ratingCount: number;
 };
 
 type Review = {
   _id: string;
-  handle: string;
   rating: number;
   body?: string;
 };
@@ -366,8 +362,7 @@ function Discover({
 
       {results === null && !loading && (
         <div style={styles.emptyState}>
-          Search literal.club to find a book and add it to the channel's
-          shelves.
+          Search literal.club to find a book and add it to your library.
         </div>
       )}
 
@@ -476,34 +471,20 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
               </div>
             </div>
             <div style={styles.shelverRow}>
-              {row.shelvings.map((s) => (
-                <div key={s.handle} style={styles.shelverChip}>
-                  <Avatar handle={s.handle} size={18} />
-                  <span style={styles.mutedText}>{STATUS_LABEL[s.status]}</span>
-                  {s.status === "reading" && s.progressPercent !== undefined && (
-                    <span style={styles.mutedText}>{s.progressPercent}%</span>
+              <div style={styles.shelverChip}>
+                <span style={styles.mutedText}>
+                  {STATUS_LABEL[row.shelving.status]}
+                </span>
+                {row.shelving.status === "reading" &&
+                  row.shelving.progressPercent !== undefined && (
+                    <span style={styles.mutedText}>
+                      {row.shelving.progressPercent}%
+                    </span>
                   )}
-                </div>
-              ))}
+              </div>
             </div>
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function ReviewRow({ review }: { review: Review }) {
-  const member = useMember(review.handle);
-  return (
-    <div style={styles.reviewRow}>
-      <Avatar handle={review.handle} size={24} pictureUrl={member?.pictureUrl} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={styles.cardTitle}>{member?.displayName ?? review.handle}</span>
-          <Stars value={review.rating} />
-        </div>
-        {review.body && <div style={styles.reviewBody}>{review.body}</div>}
       </div>
     </div>
   );
@@ -514,8 +495,8 @@ function BookDetail({ bookId, onBack }: { bookId: string; onBack: () => void }) 
   const detail = useQuery("bookDetail", context ? { bookId } : "skip") as
     | {
         book: Book;
-        shelvings: Shelving[];
-        reviews: Review[];
+        shelving: Shelving | null;
+        review: Review | null;
         avgRating: number | null;
         ratingCount: number;
       }
@@ -544,11 +525,13 @@ function BookDetail({ bookId, onBack }: { bookId: string; onBack: () => void }) 
     );
   }
 
-  const { book, shelvings, reviews, avgRating, ratingCount } = detail;
-  const myHandle = context?.handle;
-  const mine = shelvings.find((s) => s.handle === myHandle);
-  const myExistingReview = reviews.find((r) => r.handle === myHandle);
-  const otherReviews = reviews.filter((r) => r.handle !== myHandle);
+  const {
+    book,
+    shelving: mine,
+    review: myExistingReview,
+    avgRating,
+    ratingCount,
+  } = detail;
 
   async function saveReview() {
     if (myRating < 1) return;
@@ -611,13 +594,6 @@ function BookDetail({ bookId, onBack }: { bookId: string; onBack: () => void }) 
         {savedRating && <span style={styles.mutedText}> Saved.</span>}
       </Section>
 
-      {otherReviews.length > 0 && (
-        <Section title="Reviews">
-          {otherReviews.map((r) => (
-            <ReviewRow key={r._id} review={r} />
-          ))}
-        </Section>
-      )}
     </div>
   );
 }

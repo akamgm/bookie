@@ -156,9 +156,7 @@ export const addToShelf = mutation({
 
     const existing = await ctx.db
       .query("shelvings")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
 
     const now = Date.now();
@@ -172,7 +170,6 @@ export const addToShelf = mutation({
     } else {
       await ctx.db.insert("shelvings", {
         bookId,
-        handle: caller,
         status,
         updatedAt: now,
         ...(status === "reading" ? { startedAt: now } : {}),
@@ -195,9 +192,7 @@ export const updateShelfStatus = mutation({
   handler: async (ctx, { caller, bookId, status, progressPercent }) => {
     const existing = await ctx.db
       .query("shelvings")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
 
     const now = Date.now();
@@ -209,7 +204,6 @@ export const updateShelfStatus = mutation({
       if (!status) throw new Error("Book is not on your shelf.");
       await ctx.db.insert("shelvings", {
         bookId,
-        handle: caller,
         status,
         updatedAt: now,
         ...(status === "reading" ? { startedAt: now } : {}),
@@ -239,9 +233,7 @@ export const removeFromShelf = mutation({
   handler: async (ctx, { caller, bookId }) => {
     const existing = await ctx.db
       .query("shelvings")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
     if (existing) await ctx.db.delete(existing._id);
   },
@@ -260,16 +252,14 @@ export const rateBook = mutation({
     }
     const existing = await ctx.db
       .query("reviews")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
 
     const now = Date.now();
     if (existing) {
       await ctx.db.patch(existing._id, { rating, body, updatedAt: now });
     } else {
-      await ctx.db.insert("reviews", { bookId, handle: caller, rating, body, updatedAt: now });
+      await ctx.db.insert("reviews", { bookId, rating, body, updatedAt: now });
     }
   },
 });
@@ -281,18 +271,14 @@ export const shareFinishedToChat = mutation({
     if (!book) throw new Error("Book not found.");
     const shelving = await ctx.db
       .query("shelvings")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
     if (shelving?.status !== "read") {
       throw new Error("Mark this book as read before sharing it to chat.");
     }
     const review = await ctx.db
       .query("reviews")
-      .withIndex("by_handle_book", (q: any) =>
-        q.eq("handle", caller).eq("bookId", bookId),
-      )
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
 
     const isSameDayUTC = (t1: number, t2: number) => {
@@ -354,6 +340,7 @@ export const shareFinishedToChat = mutation({
 
 export const channelShelf = query({
   args: {
+    caller: v.string(),
     status: v.optional(
       v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
     ),
@@ -387,11 +374,10 @@ export const channelShelf = query({
         : null;
       books.push({
         book,
-        shelvings: rows.map((r: any) => ({
-          handle: r.handle,
-          status: r.status,
-          progressPercent: r.progressPercent,
-        })),
+        shelving: {
+          status: rows[0].status,
+          progressPercent: rows[0].progressPercent,
+        },
         avgRating,
         ratingCount: reviews.length,
       });
@@ -401,7 +387,7 @@ export const channelShelf = query({
 });
 
 export const bookDetail = query({
-  args: { bookId: v.id("books") },
+  args: { caller: v.string(), bookId: v.id("books") },
   handler: async (ctx, { bookId }) => {
     const book = await ctx.db.get(bookId);
     if (!book) return null;
@@ -416,17 +402,20 @@ export const bookDetail = query({
     const avgRating = reviews.length
       ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length
       : null;
-    return { book, shelvings, reviews, avgRating, ratingCount: reviews.length };
+    return {
+      book,
+      shelving: shelvings[0] ?? null,
+      review: reviews[0] ?? null,
+      avgRating,
+      ratingCount: reviews.length,
+    };
   },
 });
 
 export const myShelvings = query({
   args: { caller: v.string() },
-  handler: async (ctx, { caller }) => {
-    const shelvings = await ctx.db
-      .query("shelvings")
-      .withIndex("by_handle", (q: any) => q.eq("handle", caller))
-      .collect();
+  handler: async (ctx) => {
+    const shelvings = await ctx.db.query("shelvings").collect();
     const out = [];
     for (const row of shelvings) {
       const book = await ctx.db.get(row.bookId);

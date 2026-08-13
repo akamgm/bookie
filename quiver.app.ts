@@ -2,7 +2,7 @@ import type { AppManifest } from "@quiver/system";
 
 const manifest: AppManifest = {
   displayName: "Bookie",
-  summary: "Search, shelve, rate, and review books together as a channel.",
+  summary: "Keep one personal reading library across every Quiver channel.",
   entrypoints: {
     channel: "src/app.tsx",
     commands: {
@@ -17,14 +17,14 @@ const manifest: AppManifest = {
   queries: {
     channelShelf: {
       summary:
-        "List books on this channel's shelf, optionally filtered by status, with per-member shelving info.",
+        "List books in the calling member's instance-wide library, optionally filtered by status.",
     },
     bookDetail: {
       summary:
-        "Return a book's cached metadata plus this channel's shelvings and reviews for it.",
+        "Return cached book metadata plus the calling member's shelving and review.",
     },
     myShelvings: {
-      summary: "List the calling member's own shelvings in this channel.",
+      summary: "List the calling member's shelvings across the Quiver instance.",
     },
   },
   mutations: {
