@@ -20,10 +20,11 @@ export default async function book(
   const top = results[0];
   const authors = top.authors.join(", ");
   const panelBase = await ctx.runQuery(api.backend.functions.getPanelBase, {});
-  // A bare "<panelBase>" with no trailing path segment lands on the
-  // channel's chat instead of focusing the app panel — a search result
-  // has no bookId yet to link to, so send it to Discover instead.
-  const titleText = panelBase ? `[${top.title}](${panelBase}/discover)` : `**${top.title}**`;
+  // searchBooks caches every result on search now, so top.bookId is a
+  // real book row — link straight to its detail page.
+  const titleText = panelBase
+    ? `[${top.title}](${panelBase}/book/${top.bookId})`
+    : `**${top.title}**`;
   const lines = [
     `📖 ${titleText}${top.subtitle ? ` — ${top.subtitle}` : ""}`,
     authors ? `by ${authors}` : undefined,

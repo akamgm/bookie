@@ -1,4 +1,4 @@
-import { query, mutation, action, v } from "@quiver/server";
+import { query, mutation, action, v, api } from "@quiver/server";
 
 const LITERAL_ENDPOINT = "https://literal.club/graphql/";
 
@@ -19,6 +19,58 @@ const SEARCH_QUERY = `
     }
   }
 `;
+
+const bookInput = v.object({
+  literalId: v.string(),
+  title: v.string(),
+  subtitle: v.optional(v.string()),
+  authors: v.array(v.string()),
+  coverUrl: v.optional(v.string()),
+  isbn10: v.optional(v.string()),
+  isbn13: v.optional(v.string()),
+  pageCount: v.optional(v.number()),
+  publishedDate: v.optional(v.string()),
+  publisher: v.optional(v.string()),
+  description: v.optional(v.string()),
+});
+
+async function upsertBook(
+  ctx: { db: any },
+  book: {
+    literalId: string;
+    title: string;
+    subtitle?: string;
+    authors: string[];
+    coverUrl?: string;
+    isbn10?: string;
+    isbn13?: string;
+    pageCount?: number;
+    publishedDate?: string;
+    publisher?: string;
+    description?: string;
+  },
+) {
+  const existing = await ctx.db
+    .query("books")
+    .withIndex("by_literalId", (q: any) => q.eq("literalId", book.literalId))
+    .first();
+  if (existing) return existing._id;
+  return ctx.db.insert("books", { ...book, cachedAt: Date.now() });
+}
+
+// Internal: searchBooks (an action) has no ctx.db, so it reaches this
+// mutation via ctx.runMutation to cache every result as soon as it's
+// shown. Not manifest-declared — not client-addressable.
+export const cacheSearchResults = mutation({
+  args: { books: v.array(bookInput) },
+  handler: async (ctx, { books }) => {
+    const ids: string[] = [];
+    for (const book of books) {
+      ids.push(await upsertBook(ctx, book));
+    }
+    return ids;
+  },
+});
 
 export const searchBooks = action({
   args: { query: v.string() },
@@ -57,7 +109,7 @@ export const searchBooks = action({
       authors: { name: string }[];
     }>;
 
-    return results.map((r) => ({
+    const mapped = results.map((r) => ({
       literalId: r.id,
       title: r.title,
       subtitle: r.subtitle ?? undefined,
@@ -70,49 +122,19 @@ export const searchBooks = action({
       publisher: r.publisher ?? undefined,
       description: r.description ?? undefined,
     }));
+
+    const bookIds = await ctx.runMutation(api.backend.functions.cacheSearchResults, {
+      books: mapped,
+    });
+
+    return mapped.map((r, i) => ({ ...r, bookId: bookIds[i] as string }));
   },
 });
-
-async function upsertBook(
-  ctx: { db: any },
-  book: {
-    literalId: string;
-    title: string;
-    subtitle?: string;
-    authors: string[];
-    coverUrl?: string;
-    isbn10?: string;
-    isbn13?: string;
-    pageCount?: number;
-    publishedDate?: string;
-    publisher?: string;
-    description?: string;
-  },
-) {
-  const existing = await ctx.db
-    .query("books")
-    .withIndex("by_literalId", (q: any) => q.eq("literalId", book.literalId))
-    .first();
-  if (existing) return existing._id;
-  return ctx.db.insert("books", { ...book, cachedAt: Date.now() });
-}
 
 export const addToShelf = mutation({
   args: {
     caller: v.string(),
-    book: v.object({
-      literalId: v.string(),
-      title: v.string(),
-      subtitle: v.optional(v.string()),
-      authors: v.array(v.string()),
-      coverUrl: v.optional(v.string()),
-      isbn10: v.optional(v.string()),
-      isbn13: v.optional(v.string()),
-      pageCount: v.optional(v.number()),
-      publishedDate: v.optional(v.string()),
-      publisher: v.optional(v.string()),
-      description: v.optional(v.string()),
-    }),
+    book: bookInput,
     status: v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
   },
   handler: async (ctx, { caller, book, status }) => {
@@ -163,9 +185,28 @@ export const updateShelfStatus = mutation({
         q.eq("handle", caller).eq("bookId", bookId),
       )
       .first();
-    if (!existing) throw new Error("Book is not on your shelf.");
 
     const now = Date.now();
+
+    // The book detail page is reachable straight from a cached search
+    // result now, before the viewer has ever shelved it — so there may
+    // be no existing row to patch. Upsert, same as addToShelf.
+    if (!existing) {
+      if (!status) throw new Error("Book is not on your shelf.");
+      await ctx.db.insert("shelvings", {
+        bookId,
+        handle: caller,
+        status,
+        updatedAt: now,
+        ...(status === "reading" ? { startedAt: now } : {}),
+        ...(status === "read" ? { finishedAt: now } : {}),
+        ...(progressPercent !== undefined
+          ? { progressPercent: Math.max(0, Math.min(100, progressPercent)) }
+          : {}),
+      });
+      return;
+    }
+
     const patch: Record<string, unknown> = { updatedAt: now };
     if (status) {
       patch.status = status;

@@ -18,14 +18,22 @@ the data model and surfaces.
   action, using the server-scoped `LITERAL_TOKEN` env var. Never inline
   that token into the iframe (`scope: "iframe"` would expose it in
   devtools).
-- **Books are cached on add, not on search.** Search results are
-  ephemeral (an action return value); `addToShelf` is what upserts a
-  `books` row, keyed by `literalId`. Don't cache raw search results into
-  the table — only books someone actually shelves.
+- **Books are cached on search, not just on add.** `searchBooks` (an
+  action, so no `ctx.db`) calls the internal `cacheSearchResults`
+  mutation via `ctx.runMutation` to upsert every result into `books`,
+  keyed by `literalId`, and returns each result with its real `bookId`
+  attached. This is what lets Discover route a click straight to
+  `BookDetail` instead of a separate unsaved-preview screen. `addToShelf`
+  still upserts too (same `upsertBook` helper) so it works standalone —
+  the two paths are idempotent against each other via the
+  `by_literalId` lookup, not a race.
 - **One shelving/review row per (handle, bookId)**, enforced by upsert
   logic against the `by_handle_book` index in `addToShelf`,
-  `updateShelfStatus`, and `rateBook`. Don't add a second insert path
-  that skips the existing-row lookup.
+  `updateShelfStatus`, and `rateBook`. `updateShelfStatus` upserts
+  (inserts when no row exists, given a `status`) rather than requiring
+  a prior `addToShelf` call — necessary now that `BookDetail` is
+  reachable for a book the viewer has never shelved. Don't add a
+  second insert path that skips the existing-row lookup.
 - **Chat posts are explicit, never automatic.** `shareFinishedToChat` is
   a member-triggered mutation gated on `status === "read"` — nothing
   posts to the channel on its own when a book is marked read.

@@ -33,6 +33,10 @@ type SearchResult = {
 
 type Book = SearchResult & { _id: string };
 
+// What searchBooks actually returns: every result is cached on search now,
+// so it always carries a real bookId (see CLAUDE.md).
+type SearchHit = SearchResult & { bookId: string };
+
 type Shelving = {
   handle: string;
   status: "want" | "reading" | "read";
@@ -56,8 +60,7 @@ type Review = {
 type View =
   | { tab: "discover" }
   | { tab: "shelves" }
-  | { tab: "detail"; bookId: string }
-  | { tab: "preview"; result: SearchResult };
+  | { tab: "detail"; bookId: string };
 
 const STATUS_LABEL: Record<Shelving["status"], string> = {
   want: "Want to read",
@@ -100,11 +103,17 @@ export default function App() {
 
   useEffect(() => {
     const bookMatch = /^\/book\/([^/]+)/.exec(path);
-    if (bookMatch) {
+    // A malformed or stale URL (e.g. "/book/undefined") must not wedge the
+    // app in a permanent bad-query loop — fall back to Discover instead of
+    // trusting the path segment as a real id.
+    if (bookMatch && bookMatch[1] && bookMatch[1] !== "undefined") {
       const bookId = bookMatch[1];
       if (!(view.tab === "detail" && view.bookId === bookId)) {
         setView({ tab: "detail", bookId });
       }
+    } else if (bookMatch && nav && nav.replace) {
+      nav.replace("/");
+      if (view.tab === "detail") setView({ tab: "discover" });
     } else if (path === "/" && view.tab === "detail") {
       setView({ tab: "discover" });
     }
@@ -138,10 +147,7 @@ export default function App() {
       )}
 
       {view.tab === "discover" && (
-        <Discover
-          onOpenBook={(bookId) => setView({ tab: "detail", bookId })}
-          onPreviewBook={(result) => setView({ tab: "preview", result })}
-        />
+        <Discover onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
       )}
       {view.tab === "shelves" && (
         <Shelves onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
@@ -150,13 +156,6 @@ export default function App() {
         <BookDetail
           bookId={view.bookId}
           onBack={() => setView({ tab: "shelves" })}
-        />
-      )}
-      {view.tab === "preview" && (
-        <BookPreview
-          result={view.result}
-          onBack={() => setView({ tab: "discover" })}
-          onAdded={(bookId) => setView({ tab: "detail", bookId })}
         />
       )}
     </main>
@@ -275,19 +274,16 @@ function ShelfControls({
 
 function Discover({
   onOpenBook,
-  onPreviewBook,
 }: {
   onOpenBook: (bookId: string) => void;
-  onPreviewBook: (result: SearchResult) => void;
 }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [results, setResults] = useState<SearchHit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const search = useAction("searchBooks");
   const addToShelf = useMutation("addToShelf");
   const removeFromShelf = useMutation("removeFromShelf");
-  const [addedIds, setAddedIds] = useState<Record<string, string>>({});
   const [addedStatus, setAddedStatus] = useState<Record<string, Shelving["status"]>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
@@ -299,7 +295,7 @@ function Discover({
     setError(null);
     try {
       const r = await search({ query: q.trim() });
-      setResults(r as SearchResult[]);
+      setResults(r as SearchHit[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");
     } finally {
@@ -307,9 +303,8 @@ function Discover({
     }
   }
 
-  async function toggleStatus(result: SearchResult, status: Shelving["status"]) {
+  async function toggleStatus(result: SearchHit, status: Shelving["status"]) {
     const key = `${result.literalId}:${status}`;
-    const bookId = addedIds[result.literalId];
     const isActive = addedStatus[result.literalId] === status;
 
     setPendingKey(key);
@@ -318,14 +313,14 @@ function Discover({
       return rest;
     });
     try {
-      if (isActive && bookId) {
-        await removeFromShelf({ bookId });
+      if (isActive) {
+        await removeFromShelf({ bookId: result.bookId });
         setAddedStatus((m) => {
           const { [result.literalId]: _removed, ...rest } = m;
           return rest;
         });
       } else {
-        const newBookId = await addToShelf({
+        await addToShelf({
           book: {
             literalId: result.literalId,
             title: result.title,
@@ -341,7 +336,6 @@ function Discover({
           },
           status,
         });
-        setAddedIds((m) => ({ ...m, [result.literalId]: newBookId as string }));
         setAddedStatus((m) => ({ ...m, [result.literalId]: status }));
       }
     } catch (err) {
@@ -383,7 +377,6 @@ function Discover({
 
       <div style={styles.list}>
         {(results ?? []).map((r) => {
-          const addedBookId = addedIds[r.literalId];
           const currentStatus = addedStatus[r.literalId];
           const isPendingThisBook = pendingKey?.startsWith(`${r.literalId}:`) ?? false;
           const error = addErrors[r.literalId];
@@ -391,7 +384,7 @@ function Discover({
             <div key={r.literalId} style={styles.card}>
               <div
                 style={{ display: "flex", gap: 10, cursor: "pointer" }}
-                onClick={() => (addedBookId ? onOpenBook(addedBookId) : onPreviewBook(r))}
+                onClick={() => r.bookId && onOpenBook(r.bookId)}
               >
                 <Cover url={r.coverUrl} title={r.title} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -654,82 +647,6 @@ function BackBar({ onBack, label = "Shelves" }: { onBack: () => void; label?: st
     <button onClick={onBack} style={styles.backButton}>
       ← {label}
     </button>
-  );
-}
-
-function BookPreview({
-  result,
-  onBack,
-  onAdded,
-}: {
-  result: SearchResult;
-  onBack: () => void;
-  onAdded: (bookId: string) => void;
-}) {
-  const addToShelf = useMutation("addToShelf");
-  const [pending, setPending] = useState<Shelving["status"] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function pick(status: Shelving["status"]) {
-    setPending(status);
-    setError(null);
-    try {
-      const bookId = await addToShelf({
-        book: {
-          literalId: result.literalId,
-          title: result.title,
-          subtitle: result.subtitle,
-          authors: result.authors,
-          coverUrl: result.coverUrl,
-          isbn10: result.isbn10,
-          isbn13: result.isbn13,
-          pageCount: result.pageCount,
-          publishedDate: result.publishedDate,
-          publisher: result.publisher,
-          description: result.description,
-        },
-        status,
-      });
-      onAdded(bookId as string);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't update shelf.");
-      setPending(null);
-    }
-  }
-
-  return (
-    <div style={styles.panel}>
-      <BackBar onBack={onBack} label="Discover" />
-      <div style={{ display: "flex", gap: 14 }}>
-        <Cover url={result.coverUrl} title={result.title} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={styles.detailTitle}>{result.title}</div>
-          {result.subtitle && <div style={styles.mutedText}>{result.subtitle}</div>}
-          <div style={styles.mutedText}>{result.authors.join(", ")}</div>
-        </div>
-      </div>
-
-      {result.description && <p style={styles.description}>{result.description}</p>}
-
-      <Section title="Add to your shelf">
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["want", "reading", "read"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => pick(s)}
-              disabled={pending !== null}
-              style={{
-                ...styles.pillButton,
-                ...(pending === s ? styles.pillButtonPending : {}),
-              }}
-            >
-              {pending === s ? "Adding…" : STATUS_LABEL[s]}
-            </button>
-          ))}
-        </div>
-        {error && <div style={styles.errorBox}>{error}</div>}
-      </Section>
-    </div>
   );
 }
 
