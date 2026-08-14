@@ -20,10 +20,13 @@ export default async function book(
   const top = results[0];
   const authors = top.authors.join(", ");
   const panelBase = await ctx.runQuery(api.backend.functions.getPanelBase, {});
-  // searchBooks caches every result on search now, so top.bookId is a
-  // real book row — link straight to its detail page.
+  // Search results are ephemeral. Cache only the selected result so the
+  // detail link uses a real books-table id without caching the full result set.
+  const bookId = await ctx.runMutation(api.backend.functions.cacheBookDetails, {
+    book: top,
+  });
   const titleText = panelBase
-    ? `[${top.title}](${panelBase}/book/${top.bookId})`
+    ? `[${top.title}](${panelBase}/book/${bookId})`
     : `**${top.title}**`;
   const lines = [
     `📖 ${titleText}${top.subtitle ? ` — ${top.subtitle}` : ""}`,
