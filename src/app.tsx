@@ -34,8 +34,15 @@ type Book = SearchResult & { _id: string };
 type SearchHit = SearchResult;
 
 type Shelving = {
-  status: "want" | "reading" | "read";
+  status: "want" | "reading" | "read" | "unfinished";
   progressPercent?: number;
+};
+
+type ShelfActivity = {
+  _id: string;
+  fromStatus?: Shelving["status"];
+  toStatus?: Shelving["status"];
+  occurredAt: number;
 };
 
 type ShelfRow = {
@@ -65,7 +72,10 @@ const STATUS_LABEL: Record<Shelving["status"], string> = {
   want: "Want to read",
   reading: "Reading",
   read: "Read",
+  unfinished: "Haven't finished",
 };
+
+const SHELF_STATUSES = ["want", "reading", "read", "unfinished"] as const;
 
 export default function App() {
   const context = useAppContext();
@@ -284,7 +294,7 @@ function ShelfControls({
   return (
     <>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {(["want", "reading", "read"] as const).map((s) => {
+        {SHELF_STATUSES.map((s) => {
           const isSelected = selectedStatus === s;
           const isPending = pendingStatus === s;
           return (
@@ -466,7 +476,7 @@ function Discover({
                 </div>
               </button>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {(["want", "reading", "read"] as const).map((s) => {
+                {SHELF_STATUSES.map((s) => {
                   const key = `${r.literalId}:${s}`;
                   const isPending = pendingKey === key;
                   const isAdded = currentStatus === s;
@@ -534,7 +544,7 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
     <div style={styles.panel}>
       <div style={styles.shelfToolbar}>
         <div style={styles.filterRow}>
-          {(["all", "want", "reading", "read"] as const).map((f) => (
+          {(["all", ...SHELF_STATUSES] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -630,6 +640,10 @@ function BookDetail({
   const rateBook = useMutation("rateBook");
   const saveBookNote = useMutation("saveBookNote");
   const shareFinishedToChat = useMutation("shareFinishedToChat");
+  const activity = useQuery(
+    "myBookActivity",
+    context ? { bookId } : "skip",
+  ) as Array<ShelfActivity & { book: Book }> | undefined;
   const [myRating, setMyRating] = useState(0);
   const [myReview, setMyReview] = useState("");
   const [savedRating, setSavedRating] = useState(false);
@@ -739,6 +753,28 @@ function BookDetail({
         )}
       </Section>
 
+      <Section title="Activity">
+        {activity === undefined && <div style={styles.mutedText}>Loading…</div>}
+        {activity && activity.length === 0 && (
+          <div style={styles.mutedText}>Shelf changes will appear here.</div>
+        )}
+        {activity && activity.length > 0 && (
+          <div style={styles.activityList}>
+            {activity.map((event) => (
+              <div key={event._id} style={styles.activityRow}>
+                <div style={styles.activityDot} />
+                <div>
+                  <div style={styles.activityText}>{describeActivity(event)}</div>
+                  <div style={styles.mutedText}>
+                    {new Date(event.occurredAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
       <Section title="Private note">
         <div style={styles.privateHint}>Only you can see this.</div>
         <textarea
@@ -790,6 +826,19 @@ function BookDetail({
 
     </div>
   );
+}
+
+function describeActivity(event: ShelfActivity): string {
+  if (!event.fromStatus && event.toStatus) {
+    return `Added to ${STATUS_LABEL[event.toStatus]}`;
+  }
+  if (event.fromStatus && !event.toStatus) {
+    return `Removed from ${STATUS_LABEL[event.fromStatus]}`;
+  }
+  if (event.fromStatus && event.toStatus) {
+    return `Moved from ${STATUS_LABEL[event.fromStatus]} to ${STATUS_LABEL[event.toStatus]}`;
+  }
+  return "Shelf updated";
 }
 
 function ProgressEditor({ bookId, value }: { bookId: string; value?: number }) {
@@ -1054,6 +1103,28 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: "0.04em",
     color: "var(--text-muted)",
+  },
+  activityList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--space-sm)",
+  },
+  activityRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "var(--space-xs)",
+  },
+  activityDot: {
+    width: 7,
+    height: 7,
+    marginTop: 5,
+    borderRadius: 999,
+    background: "var(--accent)",
+    flexShrink: 0,
+  },
+  activityText: {
+    color: "var(--text-secondary)",
+    fontSize: "var(--font-size-sm)",
   },
   privateHint: {
     color: "var(--text-muted)",

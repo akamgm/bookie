@@ -44,6 +44,22 @@ async function upsertBook(
   return ctx.db.insert("books", { ...book, cachedAt: Date.now() });
 }
 
+async function recordShelfTransition(
+  ctx: { db: any },
+  bookId: any,
+  fromStatus: "want" | "reading" | "read" | "unfinished" | undefined,
+  toStatus: "want" | "reading" | "read" | "unfinished" | undefined,
+  occurredAt: number,
+) {
+  if (fromStatus === toStatus) return;
+  await ctx.db.insert("shelfActivity", {
+    bookId,
+    ...(fromStatus !== undefined ? { fromStatus } : {}),
+    ...(toStatus !== undefined ? { toStatus } : {}),
+    occurredAt,
+  });
+}
+
 export const cacheBookDetails = mutation({
   args: {
     book: v.object({
@@ -132,7 +148,12 @@ export const addToShelf = mutation({
       publisher: v.optional(v.string()),
       description: v.optional(v.string()),
     }),
-    status: v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+    status: v.union(
+      v.literal("want"),
+      v.literal("reading"),
+      v.literal("read"),
+      v.literal("unfinished"),
+    ),
   },
   handler: async (ctx, { caller, book, status }) => {
     const bookId = await upsertBook(ctx, book);
@@ -150,6 +171,7 @@ export const addToShelf = mutation({
         ...(status === "reading" && !existing.startedAt ? { startedAt: now } : {}),
         ...(status === "read" && !existing.finishedAt ? { finishedAt: now } : {}),
       });
+      await recordShelfTransition(ctx, bookId, existing.status, status, now);
     } else {
       await ctx.db.insert("shelvings", {
         bookId,
@@ -158,6 +180,7 @@ export const addToShelf = mutation({
         ...(status === "reading" ? { startedAt: now } : {}),
         ...(status === "read" ? { finishedAt: now } : {}),
       });
+      await recordShelfTransition(ctx, bookId, undefined, status, now);
     }
     return bookId;
   },
@@ -168,7 +191,12 @@ export const updateShelfStatus = mutation({
     caller: v.string(),
     bookId: v.id("books"),
     status: v.optional(
-      v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+      v.union(
+        v.literal("want"),
+        v.literal("reading"),
+        v.literal("read"),
+        v.literal("unfinished"),
+      ),
     ),
     progressPercent: v.optional(v.number()),
   },
@@ -195,6 +223,7 @@ export const updateShelfStatus = mutation({
           ? { progressPercent: Math.max(0, Math.min(100, progressPercent)) }
           : {}),
       });
+      await recordShelfTransition(ctx, bookId, undefined, status, now);
       return;
     }
 
@@ -208,6 +237,9 @@ export const updateShelfStatus = mutation({
       patch.progressPercent = Math.max(0, Math.min(100, progressPercent));
     }
     await ctx.db.patch(existing._id, patch);
+    if (status) {
+      await recordShelfTransition(ctx, bookId, existing.status, status, now);
+    }
   },
 });
 
@@ -218,7 +250,11 @@ export const removeFromShelf = mutation({
       .query("shelvings")
       .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .first();
-    if (existing) await ctx.db.delete(existing._id);
+    if (existing) {
+      const now = Date.now();
+      await ctx.db.delete(existing._id);
+      await recordShelfTransition(ctx, bookId, existing.status, undefined, now);
+    }
   },
 });
 
@@ -356,7 +392,12 @@ export const channelShelf = query({
   args: {
     caller: v.string(),
     status: v.optional(
-      v.union(v.literal("want"), v.literal("reading"), v.literal("read")),
+      v.union(
+        v.literal("want"),
+        v.literal("reading"),
+        v.literal("read"),
+        v.literal("unfinished"),
+      ),
     ),
   },
   handler: async (ctx, { status }) => {
@@ -439,6 +480,28 @@ export const myShelvings = query({
     const shelvings = await ctx.db.query("shelvings").collect();
     const out = [];
     for (const row of shelvings) {
+      const book = await ctx.db.get(row.bookId);
+      if (book) out.push({ ...row, book });
+    }
+    return out;
+  },
+});
+
+export const myBookActivity = query({
+  args: {
+    caller: v.string(),
+    bookId: v.optional(v.id("books")),
+  },
+  handler: async (ctx, { bookId }) => {
+    const activity = bookId
+      ? await ctx.db
+          .query("shelfActivity")
+          .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
+          .collect()
+      : await ctx.db.query("shelfActivity").collect();
+
+    const out = [];
+    for (const row of activity.sort((a: any, b: any) => b.occurredAt - a.occurredAt)) {
       const book = await ctx.db.get(row.bookId);
       if (book) out.push({ ...row, book });
     }

@@ -26,6 +26,10 @@ const manifest: AppManifest = {
     myShelvings: {
       summary: "List the calling member's shelvings across the Quiver instance.",
     },
+    myBookActivity: {
+      summary:
+        "List the calling member's shelf transition history, optionally for one book.",
+    },
   },
   mutations: {
     cacheBookDetails: {

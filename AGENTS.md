@@ -3,16 +3,17 @@
 Run `quiver docs intro` for platform basics before making changes.
 
 Bookie is a personal reading tracker that follows each member across
-channels: search literal.club, shelve books (want/reading/read), rate and
+channels: search literal.club, shelve books
+(want/reading/read/unfinished), retain shelf-transition history, rate and
 review. See `README.md` for the data model and surfaces.
 
 ## Invariants
 
-- **Shelves and reviews are `.scope("member")`.** They follow the caller
-  across every channel and are not readable by other members. Book metadata
-  is `.scope("quiver")` so all personal libraries can reference the same
-  cached book. Keep panel-link settings channel-scoped. Scope migrations must
-  remove the old `channelId` but preserve the existing `handle`.
+- **Shelves, shelf activity, and reviews are `.scope("member")`.** They follow
+  the caller across every channel and are not readable by other members. Book
+  metadata is `.scope("quiver")` so all personal libraries can reference the
+  same cached book. Keep panel-link settings channel-scoped. Scope migrations
+  must remove the old `channelId` but preserve the existing `handle`.
 - **`literal.club` calls only happen server-side**, in the `searchBooks`
   action, using the server-scoped `LITERAL_TOKEN` env var. Never inline
   that token into the iframe (`scope: "iframe"` would expose it in
@@ -26,6 +27,10 @@ review. See `README.md` for the data model and surfaces.
   upsert logic against the `by_bookId` index in `addToShelf`,
   `updateShelfStatus`, and `rateBook`. Don't add a second insert path
   that skips the existing-row lookup.
+- **Shelf activity is append-only.** Record one transition when a shelving is
+  created, changes status, or is removed. Do not record progress-only updates
+  or same-status writes. A missing `fromStatus` means initial shelving and a
+  missing `toStatus` means removal.
 - **Chat posts are explicit, never automatic.** `shareFinishedToChat` is
   a member-triggered mutation gated on `status === "read"` — nothing
   posts to the channel on its own when a book is marked read.

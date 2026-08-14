@@ -27,6 +27,7 @@ export default defineSchema({
       v.literal("want"),
       v.literal("reading"),
       v.literal("read"),
+      v.literal("unfinished"),
     ),
     progressPercent: v.optional(v.number()),
     startedAt: v.optional(v.number()),
@@ -36,6 +37,34 @@ export default defineSchema({
     .scope("member")
     .index("by_bookId", ["bookId"])
     .index("by_status", ["status"]),
+
+  // Immutable shelf transitions for the calling member. Missing fromStatus
+  // means the book was newly shelved; missing toStatus means it was removed.
+  // Keeping transitions separate from the current shelving row preserves
+  // repeated reading attempts for future duration and activity statistics.
+  shelfActivity: defineTable({
+    bookId: v.id("books"),
+    fromStatus: v.optional(
+      v.union(
+        v.literal("want"),
+        v.literal("reading"),
+        v.literal("read"),
+        v.literal("unfinished"),
+      ),
+    ),
+    toStatus: v.optional(
+      v.union(
+        v.literal("want"),
+        v.literal("reading"),
+        v.literal("read"),
+        v.literal("unfinished"),
+      ),
+    ),
+    occurredAt: v.number(),
+  })
+    .scope("member")
+    .index("by_bookId", ["bookId"])
+    .index("by_occurredAt", ["occurredAt"]),
 
   // One row per book in the calling member's instance-wide reviews.
   reviews: defineTable({
