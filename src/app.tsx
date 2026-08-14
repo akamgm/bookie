@@ -704,7 +704,7 @@ function BookDetail({
   }
 
   return (
-    <div style={styles.panel}>
+    <div style={{ ...styles.panel, ...styles.detailPanel }}>
       <BackBar onBack={onBack} />
       <div style={{ display: "flex", gap: 14 }}>
         <Cover url={book.coverUrl} title={book.title} />
@@ -925,6 +925,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: "var(--space-sm)",
+  },
+  detailPanel: {
+    gap: "var(--space-md)",
   },
   searchRow: { display: "flex", gap: "var(--space-xs)" },
   searchInput: {
