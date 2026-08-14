@@ -753,28 +753,6 @@ function BookDetail({
         )}
       </Section>
 
-      <Section title="Activity">
-        {activity === undefined && <div style={styles.mutedText}>Loading…</div>}
-        {activity && activity.length === 0 && (
-          <div style={styles.mutedText}>Shelf changes will appear here.</div>
-        )}
-        {activity && activity.length > 0 && (
-          <div style={styles.activityList}>
-            {activity.map((event) => (
-              <div key={event._id} style={styles.activityRow}>
-                <div style={styles.activityDot} />
-                <div>
-                  <div style={styles.activityText}>{describeActivity(event)}</div>
-                  <div style={styles.mutedText}>
-                    {new Date(event.occurredAt).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
       <Section title="Private note">
         <div style={styles.privateHint}>Only you can see this.</div>
         <textarea
@@ -823,6 +801,33 @@ function BookDetail({
         </button>
         {savedRating && <span style={styles.mutedText}> Saved.</span>}
       </Section>
+
+      <details style={styles.activityDisclosure}>
+        <summary style={styles.activitySummary}>
+          Activity{activity ? ` (${activity.length})` : ""}
+        </summary>
+        <div style={styles.activityContent}>
+          {activity === undefined && <div style={styles.mutedText}>Loading…</div>}
+          {activity && activity.length === 0 && (
+            <div style={styles.mutedText}>Shelf changes will appear here.</div>
+          )}
+          {activity && activity.length > 0 && (
+            <div style={styles.activityList}>
+              {activity.map((event) => (
+                <div key={event._id} style={styles.activityRow}>
+                  <div style={styles.activityDot} />
+                  <div>
+                    <div style={styles.activityText}>{describeActivity(event)}</div>
+                    <div style={styles.mutedText}>
+                      {new Date(event.occurredAt).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
 
     </div>
   );
@@ -1103,6 +1108,21 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: "0.04em",
     color: "var(--text-muted)",
+  },
+  activityDisclosure: {
+    paddingTop: "var(--space-sm)",
+    borderTop: "1px solid var(--topbar-border)",
+  },
+  activitySummary: {
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    fontSize: "var(--font-size-xs)",
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+  },
+  activityContent: {
+    paddingTop: "var(--space-sm)",
   },
   activityList: {
     display: "flex",
