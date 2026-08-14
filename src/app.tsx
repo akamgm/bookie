@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useAppContext,
   useQuery,
@@ -40,10 +40,15 @@ type Shelving = {
 
 type ShelfRow = {
   book: Book;
-  shelving: Shelving;
+  shelving: Shelving & {
+    dateAdded: number;
+    updatedAt: number;
+  };
   avgRating: number | null;
   ratingCount: number;
 };
+
+type ShelfSort = "updated" | "added" | "title" | "author";
 
 type Review = {
   _id: string;
@@ -495,27 +500,66 @@ function Discover({
 
 function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
   const [filter, setFilter] = useState<"all" | Shelving["status"]>("all");
+  const [sort, setSort] = useState<ShelfSort>("updated");
   const context = useAppContext();
   const rows = useQuery(
     "channelShelf",
     context ? { status: filter === "all" ? undefined : filter } : "skip",
   ) as ShelfRow[] | undefined;
+  const sortedRows = useMemo(() => {
+    const compareText = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" });
+
+    return [...(rows ?? [])].sort((a, b) => {
+      let comparison = 0;
+      if (sort === "updated") {
+        comparison = b.shelving.updatedAt - a.shelving.updatedAt;
+      } else if (sort === "added") {
+        comparison = b.shelving.dateAdded - a.shelving.dateAdded;
+      } else if (sort === "title") {
+        comparison = compareText(a.book.title, b.book.title);
+      } else {
+        comparison = compareText(a.book.authors[0] ?? "", b.book.authors[0] ?? "");
+      }
+
+      return (
+        comparison ||
+        compareText(a.book.title, b.book.title) ||
+        compareText(a.book._id, b.book._id)
+      );
+    });
+  }, [rows, sort]);
 
   return (
     <div style={styles.panel}>
-      <div style={styles.filterRow}>
-        {(["all", "want", "reading", "read"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{
-              ...styles.pillButton,
-              ...(filter === f ? styles.pillButtonActive : {}),
-            }}
+      <div style={styles.shelfToolbar}>
+        <div style={styles.filterRow}>
+          {(["all", "want", "reading", "read"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              style={{
+                ...styles.pillButton,
+                ...(filter === f ? styles.pillButtonActive : {}),
+              }}
+            >
+              {f === "all" ? "All" : STATUS_LABEL[f]}
+            </button>
+          ))}
+        </div>
+        <label style={styles.sortControl}>
+          <span style={styles.sortLabel}>Sort by</span>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as ShelfSort)}
+            style={styles.sortSelect}
           >
-            {f === "all" ? "All" : STATUS_LABEL[f]}
-          </button>
-        ))}
+            <option value="updated">Most recently updated</option>
+            <option value="added">Date added</option>
+            <option value="title">Book title</option>
+            <option value="author">Author name</option>
+          </select>
+        </label>
       </div>
 
       {rows === undefined && <div style={styles.emptyState}>Loading…</div>}
@@ -526,7 +570,7 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
       )}
 
       <div style={styles.list}>
-        {(rows ?? []).map((row) => (
+        {sortedRows.map((row) => (
           <div
             key={row.book._id}
             style={{ ...styles.card, cursor: "pointer" }}
@@ -885,7 +929,33 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.7,
     cursor: "wait",
   },
+  shelfToolbar: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: "var(--space-sm)",
+  },
   filterRow: { display: "flex", gap: 6, flexWrap: "wrap" },
+  sortControl: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-xs)",
+  },
+  sortLabel: {
+    color: "var(--text-muted)",
+    fontSize: "var(--font-size-xs)",
+    whiteSpace: "nowrap",
+  },
+  sortSelect: {
+    padding: "4px 28px 4px 8px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--topbar-border)",
+    background: "var(--app-bg)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-sans)",
+    fontSize: "var(--font-size-xs)",
+    cursor: "pointer",
+  },
   shelverRow: {
     display: "flex",
     gap: 10,

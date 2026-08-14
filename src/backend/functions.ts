@@ -360,6 +360,8 @@ export const channelShelf = query({
         shelving: {
           status: rows[0].status,
           progressPercent: rows[0].progressPercent,
+          dateAdded: rows[0]._creationTime,
+          updatedAt: rows[0].updatedAt,
         },
         avgRating,
         ratingCount: reviews.length,
