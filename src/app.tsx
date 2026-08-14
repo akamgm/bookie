@@ -242,31 +242,69 @@ function ShelfControls({
 }) {
   const updateStatus = useMutation("updateShelfStatus");
   const removeFromShelf = useMutation("removeFromShelf");
+  const [selectedStatus, setSelectedStatus] = useState<Shelving["status"] | undefined>(
+    currentStatus,
+  );
+  const [pendingStatus, setPendingStatus] = useState<Shelving["status"] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedStatus(currentStatus);
+  }, [currentStatus]);
 
   async function pick(status: Shelving["status"]) {
-    if (status === currentStatus) {
-      await removeFromShelf({ bookId });
-    } else {
-      await updateStatus({ bookId, status });
+    if (pendingStatus) return;
+
+    const previousStatus = selectedStatus;
+    const nextStatus = status === selectedStatus ? undefined : status;
+    setPendingStatus(status);
+    setError(null);
+    setSelectedStatus(nextStatus);
+
+    try {
+      if (nextStatus === undefined) {
+        await removeFromShelf({ bookId });
+      } else {
+        await updateStatus({ bookId, status: nextStatus });
+      }
+      onChanged?.();
+    } catch (err) {
+      setSelectedStatus(previousStatus);
+      setError(err instanceof Error ? err.message : "Couldn't update your shelf.");
+    } finally {
+      setPendingStatus(null);
     }
-    onChanged?.();
   }
 
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {(["want", "reading", "read"] as const).map((s) => (
-        <button
-          key={s}
-          onClick={() => pick(s)}
-          style={{
-            ...styles.pillButton,
-            ...(currentStatus === s ? styles.pillButtonActive : {}),
-          }}
-        >
-          {STATUS_LABEL[s]}
-        </button>
-      ))}
-    </div>
+    <>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {(["want", "reading", "read"] as const).map((s) => {
+          const isSelected = selectedStatus === s;
+          const isPending = pendingStatus === s;
+          return (
+            <button
+              type="button"
+              key={s}
+              aria-pressed={isSelected}
+              disabled={pendingStatus !== null}
+              onClick={() => void pick(s)}
+              style={{
+                ...styles.pillButton,
+                ...(isSelected ? styles.pillButtonActive : {}),
+                ...(isPending ? styles.pillButtonPending : {}),
+                ...(pendingStatus && !isPending ? styles.pillButtonDisabled : {}),
+              }}
+            >
+              {isPending
+                ? (isSelected ? "Saving…" : "Removing…")
+                : isSelected ? `✓ ${STATUS_LABEL[s]}` : STATUS_LABEL[s]}
+            </button>
+          );
+        })}
+      </div>
+      {error && <div style={styles.errorBox}>{error}</div>}
+    </>
   );
 }
 
