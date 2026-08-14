@@ -56,6 +56,7 @@ type ShelfRow = {
 };
 
 type ShelfSort = "updated" | "added" | "title" | "author";
+type ShelfFilter = "all" | Shelving["status"];
 
 type Review = {
   _id: string;
@@ -79,7 +80,9 @@ const SHELF_STATUSES = ["want", "reading", "read", "unfinished"] as const;
 
 export default function App() {
   const context = useAppContext();
-  const [view, setView] = useState<View>({ tab: "discover" });
+  const [discoverQuery, setDiscoverQuery] = useState<string | undefined>();
+  const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
+  const [shelfSort, setShelfSort] = useState<ShelfSort>("updated");
 
   // Record panel base so the backend can generate links back to this channel's app instance.
   const staged: any = useStagePath();
@@ -100,33 +103,31 @@ export default function App() {
   // straight to a specific book instead of always landing on Discover.
   const nav: any = useAppPath();
   const path: string = (nav && nav.path) || "/";
+  const bookMatch = /^\/book\/([^/]+)/.exec(path);
+  const validBookId =
+    bookMatch && bookMatch[1] && bookMatch[1] !== "undefined"
+      ? bookMatch[1]
+      : undefined;
+  const view: View = validBookId
+    ? { tab: "detail", bookId: validBookId }
+    : path === "/shelves"
+      ? { tab: "shelves" }
+      : { tab: "discover", query: discoverQuery };
 
   useEffect(() => {
-    if (nav && nav.push) {
-      const targetPath = view.tab === "detail" ? `/book/${view.bookId}` : "/";
-      if (path !== targetPath) {
-        nav.push(targetPath);
-      }
-    }
-  }, [view]);
-
-  useEffect(() => {
-    const bookMatch = /^\/book\/([^/]+)/.exec(path);
     // A malformed or stale URL (e.g. "/book/undefined") must not wedge the
     // app in a permanent bad-query loop — fall back to Discover instead of
     // trusting the path segment as a real id.
-    if (bookMatch && bookMatch[1] && bookMatch[1] !== "undefined") {
-      const bookId = bookMatch[1];
-      if (!(view.tab === "detail" && view.bookId === bookId)) {
-        setView({ tab: "detail", bookId });
-      }
-    } else if (bookMatch && nav && nav.replace) {
+    if (bookMatch && !validBookId && nav && nav.replace) {
       nav.replace("/");
-      if (view.tab === "detail") setView({ tab: "discover" });
-    } else if (path === "/" && view.tab === "detail") {
-      setView({ tab: "discover" });
     }
-  }, [path]);
+  }, [path, validBookId]);
+
+  function openPath(targetPath: string) {
+    if (nav && nav.push && path !== targetPath) {
+      nav.push(targetPath);
+    }
+  }
 
   if (!context) {
     return (
@@ -142,13 +143,16 @@ export default function App() {
         <nav style={styles.tabs}>
           <TabButton
             active={view.tab === "discover"}
-            onClick={() => setView({ tab: "discover" })}
+            onClick={() => {
+              setDiscoverQuery(undefined);
+              openPath("/");
+            }}
           >
             Discover
           </TabButton>
           <TabButton
             active={view.tab === "shelves"}
-            onClick={() => setView({ tab: "shelves" })}
+            onClick={() => openPath("/shelves")}
           >
             Shelves
           </TabButton>
@@ -158,17 +162,32 @@ export default function App() {
       {view.tab === "discover" && (
         <Discover
           initialQuery={view.query}
-          onOpenBook={(bookId) => setView({ tab: "detail", bookId })}
+          onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
         />
       )}
       {view.tab === "shelves" && (
-        <Shelves onOpenBook={(bookId) => setView({ tab: "detail", bookId })} />
+        <Shelves
+          filter={shelfFilter}
+          sort={shelfSort}
+          onFilterChange={setShelfFilter}
+          onSortChange={setShelfSort}
+          onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
+        />
       )}
       {view.tab === "detail" && (
         <BookDetail
           bookId={view.bookId}
-          onBack={() => setView({ tab: "shelves" })}
-          onSearchAuthor={(author) => setView({ tab: "discover", query: author })}
+          onBack={() => {
+            if (nav && nav.back) {
+              nav.back("/shelves");
+            } else if (nav && nav.replace) {
+              nav.replace("/shelves");
+            }
+          }}
+          onSearchAuthor={(author) => {
+            setDiscoverQuery(author);
+            openPath("/");
+          }}
         />
       )}
     </main>
@@ -508,9 +527,19 @@ function Discover({
   );
 }
 
-function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
-  const [filter, setFilter] = useState<"all" | Shelving["status"]>("all");
-  const [sort, setSort] = useState<ShelfSort>("updated");
+function Shelves({
+  filter,
+  sort,
+  onFilterChange,
+  onSortChange,
+  onOpenBook,
+}: {
+  filter: ShelfFilter;
+  sort: ShelfSort;
+  onFilterChange: (filter: ShelfFilter) => void;
+  onSortChange: (sort: ShelfSort) => void;
+  onOpenBook: (bookId: string) => void;
+}) {
   const context = useAppContext();
   const rows = useQuery(
     "channelShelf",
@@ -547,7 +576,7 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
           {(["all", ...SHELF_STATUSES] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => onFilterChange(f)}
               style={{
                 ...styles.pillButton,
                 ...(filter === f ? styles.pillButtonActive : {}),
@@ -561,7 +590,7 @@ function Shelves({ onOpenBook }: { onOpenBook: (bookId: string) => void }) {
           <span style={styles.sortLabel}>Sort by</span>
           <select
             value={sort}
-            onChange={(event) => setSort(event.target.value as ShelfSort)}
+            onChange={(event) => onSortChange(event.target.value as ShelfSort)}
             style={styles.sortSelect}
           >
             <option value="updated">Most recently updated</option>
