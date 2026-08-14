@@ -247,6 +247,37 @@ export const rateBook = mutation({
   },
 });
 
+export const saveBookNote = mutation({
+  args: {
+    caller: v.string(),
+    bookId: v.id("books"),
+    body: v.string(),
+  },
+  handler: async (ctx, { bookId, body }) => {
+    if (body.length > 5000) {
+      throw new Error("Notes must be 5,000 characters or fewer.");
+    }
+    const book = await ctx.db.get(bookId);
+    if (!book) throw new Error("Book not found.");
+
+    const existing = await ctx.db
+      .query("notes")
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
+      .first();
+
+    if (!body.trim()) {
+      if (existing) await ctx.db.delete(existing._id);
+      return;
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { body, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("notes", { bookId, body, updatedAt: Date.now() });
+    }
+  },
+});
+
 export const shareFinishedToChat = mutation({
   args: { caller: v.string(), bookId: v.id("books") },
   handler: async (ctx, { caller, bookId }) => {
@@ -384,6 +415,10 @@ export const bookDetail = query({
       .query("reviews")
       .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
       .collect();
+    const note = await ctx.db
+      .query("notes")
+      .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId))
+      .first();
     const avgRating = reviews.length
       ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length
       : null;
@@ -391,6 +426,7 @@ export const bookDetail = query({
       book,
       shelving: shelvings[0] ?? null,
       review: reviews[0] ?? null,
+      note: note?.body ?? null,
       avgRating,
       ratingCount: reviews.length,
     };

@@ -47,6 +47,16 @@ export default defineSchema({
     .scope("member")
     .index("by_bookId", ["bookId"]),
 
+  // Private notes are separate from reviews so they are never included in
+  // chat shares and remain available if the member removes a book from a shelf.
+  notes: defineTable({
+    bookId: v.id("books"),
+    body: v.string(),
+    updatedAt: v.number(),
+  })
+    .scope("member")
+    .index("by_bookId", ["bookId"]),
+
   // Channel-specific settings (such as the base URL of the channel's app
   // panel, used to build deep links back into it from chat posts).
   settings: defineTable({

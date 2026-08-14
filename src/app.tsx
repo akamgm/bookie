@@ -621,16 +621,29 @@ function BookDetail({
         book: Book;
         shelving: Shelving | null;
         review: Review | null;
+        note: string | null;
         avgRating: number | null;
         ratingCount: number;
       }
     | null
     | undefined;
   const rateBook = useMutation("rateBook");
+  const saveBookNote = useMutation("saveBookNote");
   const shareFinishedToChat = useMutation("shareFinishedToChat");
   const [myRating, setMyRating] = useState(0);
   const [myReview, setMyReview] = useState("");
   const [savedRating, setSavedRating] = useState(false);
+  const [myNote, setMyNote] = useState("");
+  const [noteStatus, setNoteStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (detail !== undefined && detail !== null) {
+      setMyNote(detail.note ?? "");
+      setNoteStatus("idle");
+      setNoteError(null);
+    }
+  }, [bookId, detail?.note]);
 
   if (detail === undefined) {
     return (
@@ -661,6 +674,19 @@ function BookDetail({
     if (myRating < 1) return;
     await rateBook({ bookId, rating: myRating, body: myReview || undefined });
     setSavedRating(true);
+  }
+
+  async function saveNote() {
+    if (noteStatus === "saving") return;
+    setNoteStatus("saving");
+    setNoteError(null);
+    try {
+      await saveBookNote({ bookId, body: myNote });
+      setNoteStatus("saved");
+    } catch (err) {
+      setNoteStatus("idle");
+      setNoteError(err instanceof Error ? err.message : "Couldn't save your note.");
+    }
   }
 
   return (
@@ -711,6 +737,37 @@ function BookDetail({
             Share to channel
           </button>
         )}
+      </Section>
+
+      <Section title="Private note">
+        <div style={styles.privateHint}>Only you can see this.</div>
+        <textarea
+          aria-label="Private note"
+          placeholder="Why do you want to read this? Anything you want to remember?"
+          value={myNote}
+          maxLength={5000}
+          onChange={(e) => {
+            setMyNote(e.target.value);
+            setNoteStatus("idle");
+            setNoteError(null);
+          }}
+          style={styles.textarea}
+          rows={4}
+        />
+        <div style={styles.noteActions}>
+          <button
+            style={{
+              ...styles.primaryButton,
+              ...(noteStatus === "saving" ? styles.buttonDisabled : {}),
+            }}
+            disabled={noteStatus === "saving"}
+            onClick={saveNote}
+          >
+            {noteStatus === "saving" ? "Saving…" : "Save note"}
+          </button>
+          {noteStatus === "saved" && <span style={styles.mutedText}>Saved.</span>}
+        </div>
+        {noteError && <div style={styles.errorBox}>{noteError}</div>}
       </Section>
 
       <Section title="Your rating">
@@ -843,6 +900,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "var(--font-size-sm)",
     fontWeight: 600,
     cursor: "pointer",
+  },
+  buttonDisabled: {
+    opacity: 0.65,
+    cursor: "wait",
   },
   errorBox: {
     padding: "var(--space-sm)",
@@ -993,6 +1054,15 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: "0.04em",
     color: "var(--text-muted)",
+  },
+  privateHint: {
+    color: "var(--text-muted)",
+    fontSize: "var(--font-size-xs)",
+  },
+  noteActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-sm)",
   },
   starButton: {
     background: "transparent",

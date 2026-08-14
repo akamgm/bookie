@@ -46,6 +46,10 @@ const manifest: AppManifest = {
       summary:
         "Set or update the calling member's star rating and review text for a book.",
     },
+    saveBookNote: {
+      summary:
+        "Save or clear the calling member's private note about a book.",
+    },
     shareFinishedToChat: {
       summary:
         "Post a message to the channel celebrating that the calling member finished a book.",
