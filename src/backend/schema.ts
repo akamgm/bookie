@@ -38,6 +38,27 @@ export default defineSchema({
     .index("by_bookId", ["bookId"])
     .index("by_status", ["status"]),
 
+  // Deliberately minimal social projection of member shelves. The private
+  // member-scoped shelving remains the source of truth; this shared table
+  // exposes only the member handle and public shelf state.
+  publicShelvings: defineTable({
+    handle: v.string(),
+    bookId: v.id("books"),
+    status: v.union(
+      v.literal("want"),
+      v.literal("reading"),
+      v.literal("read"),
+      v.literal("unfinished"),
+    ),
+    progressPercent: v.optional(v.number()),
+    dateAdded: v.number(),
+    updatedAt: v.number(),
+  })
+    .scope("quiver")
+    .index("by_handle", ["handle"])
+    .index("by_handle_bookId", ["handle", "bookId"])
+    .index("by_handle_status", ["handle", "status"]),
+
   // Immutable shelf transitions for the calling member. Missing fromStatus
   // means the book was newly shelved; missing toStatus means it was removed.
   // Keeping transitions separate from the current shelving row preserves

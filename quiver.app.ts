@@ -30,6 +30,10 @@ const manifest: AppManifest = {
       summary:
         "List the calling member's shelf transition history, optionally for one book.",
     },
+    publicShelf: {
+      summary:
+        "List the public shelf state for a Quiver member, optionally filtered by status.",
+    },
   },
   mutations: {
     cacheBookDetails: {
@@ -61,6 +65,10 @@ const manifest: AppManifest = {
     recordPanelBase: {
       summary:
         "Record the channel panel's base URL for generating chat deep links.",
+    },
+    syncPublicShelf: {
+      summary:
+        "Synchronize the calling member's public shelf projection from their private library.",
     },
   },
   actions: {

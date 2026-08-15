@@ -10,7 +10,10 @@ review. See `README.md` for the data model and surfaces.
 ## Invariants
 
 - **Shelves, shelf activity, and reviews are `.scope("member")`.** They follow
-  the caller across every channel and are not readable by other members. Book
+  the caller across every channel and are not directly readable by other
+  members. `publicShelvings` is the minimal `.scope("quiver")` social
+  projection and may expose only handle, book, shelf status, progress, and
+  shelf timestamps. Never copy notes, reviews, or activity into it. Book
   metadata is `.scope("quiver")` so all personal libraries can reference the
   same cached book. Keep panel-link settings channel-scoped. Scope migrations
   must remove the old `channelId` but preserve the existing `handle`.

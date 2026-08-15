@@ -60,6 +60,38 @@ async function recordShelfTransition(
   });
 }
 
+async function upsertPublicShelving(
+  ctx: { db: any },
+  handle: string,
+  shelving: {
+    bookId: any;
+    status: "want" | "reading" | "read" | "unfinished";
+    progressPercent?: number;
+    updatedAt: number;
+    _creationTime: number;
+  },
+) {
+  const existing = await ctx.db
+    .query("publicShelvings")
+    .withIndex("by_handle_bookId", (q: any) =>
+      q.eq("handle", handle).eq("bookId", shelving.bookId),
+    )
+    .first();
+  const value = {
+    handle,
+    bookId: shelving.bookId,
+    status: shelving.status,
+    progressPercent: shelving.progressPercent,
+    dateAdded: shelving._creationTime,
+    updatedAt: shelving.updatedAt,
+  };
+  if (existing) {
+    await ctx.db.patch(existing._id, value);
+  } else {
+    await ctx.db.insert("publicShelvings", value);
+  }
+}
+
 export const cacheBookDetails = mutation({
   args: {
     book: v.object({
@@ -165,21 +197,25 @@ export const addToShelf = mutation({
 
     const now = Date.now();
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      const patch = {
         status,
         updatedAt: now,
         ...(status === "reading" && !existing.startedAt ? { startedAt: now } : {}),
         ...(status === "read" && !existing.finishedAt ? { finishedAt: now } : {}),
-      });
+      };
+      await ctx.db.patch(existing._id, patch);
+      await upsertPublicShelving(ctx, caller, { ...existing, ...patch });
       await recordShelfTransition(ctx, bookId, existing.status, status, now);
     } else {
-      await ctx.db.insert("shelvings", {
+      const shelvingId = await ctx.db.insert("shelvings", {
         bookId,
         status,
         updatedAt: now,
         ...(status === "reading" ? { startedAt: now } : {}),
         ...(status === "read" ? { finishedAt: now } : {}),
       });
+      const shelving = await ctx.db.get(shelvingId);
+      await upsertPublicShelving(ctx, caller, shelving);
       await recordShelfTransition(ctx, bookId, undefined, status, now);
     }
     return bookId;
@@ -213,7 +249,7 @@ export const updateShelfStatus = mutation({
     // be no existing row to patch. Upsert, same as addToShelf.
     if (!existing) {
       if (!status) throw new Error("Book is not on your shelf.");
-      await ctx.db.insert("shelvings", {
+      const shelvingId = await ctx.db.insert("shelvings", {
         bookId,
         status,
         updatedAt: now,
@@ -223,6 +259,8 @@ export const updateShelfStatus = mutation({
           ? { progressPercent: Math.max(0, Math.min(100, progressPercent)) }
           : {}),
       });
+      const shelving = await ctx.db.get(shelvingId);
+      await upsertPublicShelving(ctx, caller, shelving);
       await recordShelfTransition(ctx, bookId, undefined, status, now);
       return;
     }
@@ -237,6 +275,7 @@ export const updateShelfStatus = mutation({
       patch.progressPercent = Math.max(0, Math.min(100, progressPercent));
     }
     await ctx.db.patch(existing._id, patch);
+    await upsertPublicShelving(ctx, caller, { ...existing, ...patch });
     if (status) {
       await recordShelfTransition(ctx, bookId, existing.status, status, now);
     }
@@ -253,7 +292,37 @@ export const removeFromShelf = mutation({
     if (existing) {
       const now = Date.now();
       await ctx.db.delete(existing._id);
+      const publicShelving = await ctx.db
+        .query("publicShelvings")
+        .withIndex("by_handle_bookId", (q: any) =>
+          q.eq("handle", caller).eq("bookId", bookId),
+        )
+        .first();
+      if (publicShelving) await ctx.db.delete(publicShelving._id);
       await recordShelfTransition(ctx, bookId, existing.status, undefined, now);
+    }
+  },
+});
+
+export const syncPublicShelf = mutation({
+  args: { caller: v.string() },
+  handler: async (ctx, { caller }) => {
+    const privateRows = await ctx.db.query("shelvings").collect();
+    const publicRows = await ctx.db
+      .query("publicShelvings")
+      .withIndex("by_handle", (q: any) => q.eq("handle", caller))
+      .collect();
+    const privateBookIds = new Set(
+      privateRows.map((row: any) => row.bookId as unknown as string),
+    );
+
+    for (const row of privateRows) {
+      await upsertPublicShelving(ctx, caller, row);
+    }
+    for (const row of publicRows) {
+      if (!privateBookIds.has(row.bookId as unknown as string)) {
+        await ctx.db.delete(row._id);
+      }
     }
   },
 });
@@ -440,6 +509,40 @@ export const channelShelf = query({
       });
     }
     return books;
+  },
+});
+
+export const publicShelf = query({
+  args: {
+    handle: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("want"),
+        v.literal("reading"),
+        v.literal("read"),
+        v.literal("unfinished"),
+      ),
+    ),
+  },
+  handler: async (ctx, { handle, status }) => {
+    const shelvings = status
+      ? await ctx.db
+          .query("publicShelvings")
+          .withIndex("by_handle_status", (q: any) =>
+            q.eq("handle", handle).eq("status", status),
+          )
+          .collect()
+      : await ctx.db
+          .query("publicShelvings")
+          .withIndex("by_handle", (q: any) => q.eq("handle", handle))
+          .collect();
+
+    const rows = [];
+    for (const shelving of shelvings) {
+      const book = await ctx.db.get(shelving.bookId);
+      if (book) rows.push({ book, shelving });
+    }
+    return rows;
   },
 });
 

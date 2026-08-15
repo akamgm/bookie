@@ -6,6 +6,9 @@ import {
   useAction,
   useStagePath,
   useAppPath,
+  useMember,
+  useMentionCandidates,
+  Avatar,
 } from "@quiver/react";
 
 function panelBaseFrom(url: string): string {
@@ -67,6 +70,8 @@ type Review = {
 type View =
   | { tab: "discover"; query?: string }
   | { tab: "shelves" }
+  | { tab: "users" }
+  | { tab: "user"; handle: string }
   | { tab: "detail"; bookId: string };
 
 const STATUS_LABEL: Record<Shelving["status"], string> = {
@@ -83,6 +88,7 @@ export default function App() {
   const [discoverQuery, setDiscoverQuery] = useState<string | undefined>();
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [shelfSort, setShelfSort] = useState<ShelfSort>("updated");
+  const syncPublicShelf = useMutation("syncPublicShelf");
 
   // Record panel base so the backend can generate links back to this channel's app instance.
   const staged: any = useStagePath();
@@ -99,17 +105,38 @@ export default function App() {
     }
   }, [base]);
 
+  useEffect(() => {
+    if (context) {
+      syncPublicShelf({}).catch((err) => {
+        console.error("Failed to synchronize public shelf:", err);
+      });
+    }
+  }, [context?.handle]);
+
   // Deep-link a book's detail view via /book/:id, so chat posts can jump
   // straight to a specific book instead of always landing on Discover.
   const nav: any = useAppPath();
   const path: string = (nav && nav.path) || "/";
   const bookMatch = /^\/book\/([^/]+)/.exec(path);
+  const userMatch = /^\/users\/([^/]+)$/.exec(path);
   const validBookId =
     bookMatch && bookMatch[1] && bookMatch[1] !== "undefined"
       ? bookMatch[1]
       : undefined;
+  let selectedHandle: string | undefined;
+  if (userMatch?.[1]) {
+    try {
+      selectedHandle = decodeURIComponent(userMatch[1]);
+    } catch {
+      selectedHandle = undefined;
+    }
+  }
   const view: View = validBookId
     ? { tab: "detail", bookId: validBookId }
+    : selectedHandle
+      ? { tab: "user", handle: selectedHandle }
+      : path === "/users"
+        ? { tab: "users" }
     : path === "/shelves"
       ? { tab: "shelves" }
       : { tab: "discover", query: discoverQuery };
@@ -139,7 +166,7 @@ export default function App() {
 
   return (
     <main style={styles.shell}>
-      {(view.tab === "discover" || view.tab === "shelves") && (
+      {(view.tab === "discover" || view.tab === "shelves" || view.tab === "users") && (
         <nav style={styles.tabs}>
           <TabButton
             active={view.tab === "discover"}
@@ -155,6 +182,12 @@ export default function App() {
             onClick={() => openPath("/shelves")}
           >
             Shelves
+          </TabButton>
+          <TabButton
+            active={view.tab === "users"}
+            onClick={() => openPath("/users")}
+          >
+            Users
           </TabButton>
         </nav>
       )}
@@ -174,6 +207,23 @@ export default function App() {
           onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
         />
       )}
+      {view.tab === "users" && (
+        <Users
+          onOpenUser={(handle) => openPath(`/users/${encodeURIComponent(handle)}`)}
+        />
+      )}
+      {view.tab === "user" && (
+        <UserShelf
+          handle={view.handle}
+          onBack={() => {
+            if (nav && nav.back) {
+              nav.back("/users");
+            } else if (nav && nav.replace) {
+              nav.replace("/users");
+            }
+          }}
+        />
+      )}
       {view.tab === "detail" && (
         <BookDetail
           bookId={view.bookId}
@@ -191,6 +241,128 @@ export default function App() {
         />
       )}
     </main>
+  );
+}
+
+function Users({ onOpenUser }: { onOpenUser: (handle: string) => void }) {
+  const candidates = useMentionCandidates("") as Array<{
+    handle: string;
+    displayName: string;
+    pictureUrl?: string;
+    kind?: string;
+  }>;
+  const users = candidates.filter((member) => member.kind !== "app");
+
+  return (
+    <div style={styles.panel}>
+      <div style={styles.pageIntro}>
+        See what other readers have on their shelves.
+      </div>
+      {users.length === 0 && (
+        <div style={styles.emptyState}>No users found in this channel.</div>
+      )}
+      <div style={styles.list}>
+        {users.map((member) => (
+          <button
+            type="button"
+            key={member.handle}
+            onClick={() => onOpenUser(member.handle)}
+            style={styles.userButton}
+          >
+            <Avatar
+              handle={member.handle}
+              size={40}
+              pictureUrl={member.pictureUrl}
+            />
+            <div style={{ minWidth: 0, textAlign: "left" }}>
+              <div style={styles.cardTitle}>{member.displayName}</div>
+              <div style={styles.mutedText}>@{member.handle}</div>
+            </div>
+            <span style={styles.userChevron}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UserShelf({ handle, onBack }: { handle: string; onBack: () => void }) {
+  const context = useAppContext();
+  const member = useMember(handle) as
+    | {
+        handle: string;
+        displayName: string;
+        pictureUrl?: string;
+      }
+    | null;
+  const [filter, setFilter] = useState<ShelfFilter>("all");
+  const rows = useQuery(
+    "publicShelf",
+    context ? { handle, status: filter === "all" ? undefined : filter } : "skip",
+  ) as ShelfRow[] | undefined;
+  const sortedRows = useMemo(
+    () =>
+      [...(rows ?? [])].sort(
+        (a, b) =>
+          b.shelving.updatedAt - a.shelving.updatedAt ||
+          a.book.title.localeCompare(b.book.title, undefined, { sensitivity: "base" }),
+      ),
+    [rows],
+  );
+
+  return (
+    <div style={styles.panel}>
+      <BackBar onBack={onBack} label="Users" />
+      <div style={styles.userHeader}>
+        <Avatar handle={handle} size={48} pictureUrl={member?.pictureUrl} />
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.detailTitle}>{member?.displayName ?? `@${handle}`}</div>
+          {member && <div style={styles.mutedText}>@{handle}</div>}
+        </div>
+      </div>
+      <div style={styles.filterRow}>
+        {(["all", ...SHELF_STATUSES] as const).map((item) => (
+          <button
+            type="button"
+            key={item}
+            onClick={() => setFilter(item)}
+            style={{
+              ...styles.pillButton,
+              ...(filter === item ? styles.pillButtonActive : {}),
+            }}
+          >
+            {item === "all" ? "All" : STATUS_LABEL[item]}
+          </button>
+        ))}
+      </div>
+      {rows === undefined && <div style={styles.emptyState}>Loading…</div>}
+      {rows && rows.length === 0 && (
+        <div style={styles.emptyState}>
+          {filter === "all"
+            ? "This user hasn't added any books yet."
+            : `No books marked ${STATUS_LABEL[filter].toLowerCase()}.`}
+        </div>
+      )}
+      <div style={styles.list}>
+        {sortedRows.map((row) => (
+          <div key={row.book._id} style={styles.card}>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Cover url={row.book.coverUrl} title={row.book.title} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={styles.cardTitle}>{row.book.title}</div>
+                <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
+                <div style={styles.publicShelfStatus}>
+                  {STATUS_LABEL[row.shelving.status]}
+                  {row.shelving.status === "reading" &&
+                    row.shelving.progressPercent !== undefined &&
+                    ` · ${row.shelving.progressPercent}%`}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -948,6 +1120,41 @@ const styles: Record<string, React.CSSProperties> = {
   tabButtonActive: {
     color: "var(--text-primary)",
     borderBottom: "2px solid var(--accent)",
+  },
+  pageIntro: {
+    color: "var(--text-secondary)",
+    fontSize: "var(--font-size-sm)",
+    lineHeight: 1.5,
+  },
+  userButton: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-sm)",
+    padding: "var(--space-sm)",
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--topbar-border)",
+    background: "var(--app-bg)",
+    color: "inherit",
+    font: "inherit",
+    cursor: "pointer",
+  },
+  userChevron: {
+    marginLeft: "auto",
+    color: "var(--text-muted)",
+    fontSize: "var(--font-size-lg)",
+  },
+  userHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-sm)",
+    paddingBottom: "var(--space-xs)",
+  },
+  publicShelfStatus: {
+    marginTop: "var(--space-xs)",
+    color: "var(--accent)",
+    fontSize: "var(--font-size-xs)",
+    fontWeight: 600,
   },
   panel: {
     padding: "var(--space-md)",
