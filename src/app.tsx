@@ -60,6 +60,7 @@ type ShelfRow = {
 
 type ShelfSort = "updated" | "added" | "title" | "author";
 type ShelfFilter = "all" | Shelving["status"];
+type ShelfDisplay = "details" | "covers";
 type DiscoverSearch = {
   query: string;
   strictAuthor?: string;
@@ -93,6 +94,11 @@ export default function App() {
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [shelfSort, setShelfSort] = useState<ShelfSort>("updated");
   const syncPublicShelf = useMutation("syncPublicShelf");
+  const preferences = useQuery(
+    "memberPreferences",
+    context ? {} : "skip",
+  ) as { shelfDisplay: ShelfDisplay } | undefined;
+  const shelfDisplay = preferences?.shelfDisplay ?? "details";
 
   // Record panel base so the backend can generate links back to this channel's app instance.
   const staged: any = useStagePath();
@@ -170,6 +176,7 @@ export default function App() {
 
   return (
     <main style={styles.shell}>
+      <style>{COVER_SHELF_CSS}</style>
       {(view.tab === "discover" || view.tab === "shelves" || view.tab === "users") && (
         <nav style={styles.tabs}>
           <TabButton
@@ -207,6 +214,7 @@ export default function App() {
         <Shelves
           filter={shelfFilter}
           sort={shelfSort}
+          display={shelfDisplay}
           onFilterChange={setShelfFilter}
           onSortChange={setShelfSort}
           onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
@@ -220,6 +228,7 @@ export default function App() {
       {view.tab === "user" && (
         <UserShelf
           handle={view.handle}
+          display={shelfDisplay}
           onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
           onBack={() => {
             if (nav && nav.back) {
@@ -294,10 +303,12 @@ function Users({ onOpenUser }: { onOpenUser: (handle: string) => void }) {
 
 function UserShelf({
   handle,
+  display,
   onBack,
   onOpenBook,
 }: {
   handle: string;
+  display: ShelfDisplay;
   onBack: () => void;
   onOpenBook: (bookId: string) => void;
 }) {
@@ -387,27 +398,44 @@ function UserShelf({
             : `No books marked ${STATUS_LABEL[filter].toLowerCase()}.`}
         </div>
       )}
-      <div style={styles.list}>
+      <div style={display === "covers" ? styles.coverShelfGrid : styles.list}>
         {sortedRows.map((row) => (
-          <div
-            key={row.book._id}
-            style={{ ...styles.card, cursor: "pointer" }}
-            onClick={() => onOpenBook(row.book._id)}
-          >
-            <div style={{ display: "flex", gap: 10 }}>
-              <Cover url={row.book.coverUrl} title={row.book.title} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={styles.cardTitle}>{row.book.title}</div>
-                <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
-                <div style={styles.publicShelfStatus}>
-                  {STATUS_LABEL[row.shelving.status]}
-                  {row.shelving.status === "reading" &&
-                    row.shelving.progressPercent !== undefined &&
-                    ` · ${row.shelving.progressPercent}%`}
+          display === "covers" ? (
+            <CoverShelfCard
+              key={row.book._id}
+              book={row.book}
+              onOpen={() => onOpenBook(row.book._id)}
+            >
+              <div style={styles.coverShelfTitle}>{row.book.title}</div>
+              <div style={styles.coverShelfMeta}>{row.book.authors.join(", ")}</div>
+              <div style={styles.coverShelfStatus}>
+                {STATUS_LABEL[row.shelving.status]}
+                {row.shelving.status === "reading" &&
+                  row.shelving.progressPercent !== undefined &&
+                  ` · ${row.shelving.progressPercent}%`}
+              </div>
+            </CoverShelfCard>
+          ) : (
+            <div
+              key={row.book._id}
+              style={{ ...styles.card, cursor: "pointer" }}
+              onClick={() => onOpenBook(row.book._id)}
+            >
+              <div style={{ display: "flex", gap: 10 }}>
+                <Cover url={row.book.coverUrl} title={row.book.title} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={styles.cardTitle}>{row.book.title}</div>
+                  <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
+                  <div style={styles.publicShelfStatus}>
+                    {STATUS_LABEL[row.shelving.status]}
+                    {row.shelving.status === "reading" &&
+                      row.shelving.progressPercent !== undefined &&
+                      ` · ${row.shelving.progressPercent}%`}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )
         ))}
       </div>
     </div>
@@ -433,14 +461,47 @@ function TabButton({
   );
 }
 
-function Cover({ url, title }: { url?: string; title: string }) {
+function Cover({
+  url,
+  title,
+  shelf = false,
+}: {
+  url?: string;
+  title: string;
+  shelf?: boolean;
+}) {
   if (url) {
-    return <img src={url} alt={title} style={styles.cover} />;
+    return <img src={url} alt={title} style={shelf ? styles.coverShelfImage : styles.cover} />;
   }
   return (
-    <div style={styles.coverFallback}>
+    <div style={shelf ? styles.coverShelfFallback : styles.coverFallback}>
       <span style={{ fontSize: 18 }}>📕</span>
     </div>
+  );
+}
+
+function CoverShelfCard({
+  book,
+  onOpen,
+  children,
+}: {
+  book: Book;
+  onOpen: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="cover-shelf-card"
+      aria-label={`Open ${book.title}`}
+      onClick={onOpen}
+      style={styles.coverShelfCard}
+    >
+      <Cover url={book.coverUrl} title={book.title} shelf />
+      <div className="cover-shelf-details" style={styles.coverShelfDetails}>
+        {children}
+      </div>
+    </button>
   );
 }
 
@@ -755,12 +816,14 @@ function Discover({
 function Shelves({
   filter,
   sort,
+  display,
   onFilterChange,
   onSortChange,
   onOpenBook,
 }: {
   filter: ShelfFilter;
   sort: ShelfSort;
+  display: ShelfDisplay;
   onFilterChange: (filter: ShelfFilter) => void;
   onSortChange: (sort: ShelfSort) => void;
   onOpenBook: (bookId: string) => void;
@@ -833,37 +896,57 @@ function Shelves({
         </div>
       )}
 
-      <div style={styles.list}>
+      <div style={display === "covers" ? styles.coverShelfGrid : styles.list}>
         {sortedRows.map((row) => (
-          <div
-            key={row.book._id}
-            style={{ ...styles.card, cursor: "pointer" }}
-            onClick={() => onOpenBook(row.book._id)}
-          >
-            <div style={{ display: "flex", gap: 10 }}>
-              <Cover url={row.book.coverUrl} title={row.book.title} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={styles.cardTitle}>{row.book.title}</div>
-                <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
-                <div style={{ marginTop: 4 }}>
-                  <Stars value={row.avgRating} />
+          display === "covers" ? (
+            <CoverShelfCard
+              key={row.book._id}
+              book={row.book}
+              onOpen={() => onOpenBook(row.book._id)}
+            >
+              <div style={styles.coverShelfTitle}>{row.book.title}</div>
+              <div style={styles.coverShelfMeta}>{row.book.authors.join(", ")}</div>
+              <div style={styles.coverShelfMeta}>
+                <Stars value={row.avgRating} />
+              </div>
+              <div style={styles.coverShelfStatus}>
+                {STATUS_LABEL[row.shelving.status]}
+                {row.shelving.status === "reading" &&
+                  row.shelving.progressPercent !== undefined &&
+                  ` · ${row.shelving.progressPercent}%`}
+              </div>
+            </CoverShelfCard>
+          ) : (
+            <div
+              key={row.book._id}
+              style={{ ...styles.card, cursor: "pointer" }}
+              onClick={() => onOpenBook(row.book._id)}
+            >
+              <div style={{ display: "flex", gap: 10 }}>
+                <Cover url={row.book.coverUrl} title={row.book.title} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={styles.cardTitle}>{row.book.title}</div>
+                  <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <Stars value={row.avgRating} />
+                  </div>
+                </div>
+              </div>
+              <div style={styles.shelverRow}>
+                <div style={styles.shelverChip}>
+                  <span style={styles.mutedText}>
+                    {STATUS_LABEL[row.shelving.status]}
+                  </span>
+                  {row.shelving.status === "reading" &&
+                    row.shelving.progressPercent !== undefined && (
+                      <span style={styles.mutedText}>
+                        {row.shelving.progressPercent}%
+                      </span>
+                    )}
                 </div>
               </div>
             </div>
-            <div style={styles.shelverRow}>
-              <div style={styles.shelverChip}>
-                <span style={styles.mutedText}>
-                  {STATUS_LABEL[row.shelving.status]}
-                </span>
-                {row.shelving.status === "reading" &&
-                  row.shelving.progressPercent !== undefined && (
-                    <span style={styles.mutedText}>
-                      {row.shelving.progressPercent}%
-                    </span>
-                  )}
-              </div>
-            </div>
-          </div>
+          )
         ))}
       </div>
     </div>
@@ -1137,6 +1220,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+const COVER_SHELF_CSS = `
+  .cover-shelf-card .cover-shelf-details {
+    opacity: 0;
+  }
+  .cover-shelf-card:hover .cover-shelf-details,
+  .cover-shelf-card:focus-visible .cover-shelf-details {
+    opacity: 1;
+  }
+`;
+
 const styles: Record<string, React.CSSProperties> = {
   shell: {
     minHeight: "100%",
@@ -1265,6 +1358,66 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "var(--font-size-sm)",
   },
   list: { display: "flex", flexDirection: "column", gap: "var(--space-sm)" },
+  coverShelfGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(96px, 120px))",
+    gap: "var(--space-sm)",
+  },
+  coverShelfCard: {
+    position: "relative",
+    display: "block",
+    width: "100%",
+    aspectRatio: "2 / 3",
+    padding: 0,
+    overflow: "hidden",
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--topbar-border)",
+    background: "var(--topbar-border)",
+    color: "#fff",
+    font: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  coverShelfImage: {
+    display: "block",
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  coverShelfFallback: {
+    width: "100%",
+    height: "100%",
+    display: "grid",
+    placeItems: "center",
+    background: "var(--topbar-border)",
+  },
+  coverShelfDetails: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: "var(--space-sm)",
+    background: "linear-gradient(transparent 15%, rgba(0, 0, 0, 0.92))",
+    transition: "opacity 150ms ease",
+  },
+  coverShelfTitle: {
+    fontSize: "var(--font-size-sm)",
+    fontWeight: 700,
+    lineHeight: 1.2,
+  },
+  coverShelfMeta: {
+    marginTop: 3,
+    color: "rgba(255, 255, 255, 0.82)",
+    fontSize: "var(--font-size-xs)",
+    lineHeight: 1.2,
+  },
+  coverShelfStatus: {
+    marginTop: "var(--space-xs)",
+    color: "#fff",
+    fontSize: "var(--font-size-xs)",
+    fontWeight: 600,
+  },
   card: {
     padding: "var(--space-sm)",
     borderRadius: "var(--radius-md)",

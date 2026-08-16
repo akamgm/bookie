@@ -37,6 +37,9 @@ review. See `README.md` for the data model and surfaces.
 - **Chat posts are explicit, never automatic.** `shareFinishedToChat` is
   a member-triggered mutation gated on `status === "read"` — nothing
   posts to the channel on its own when a book is marked read.
+- **Shelf display preferences are `.scope("member")`.** They control the
+  caller's view of both personal and public shelves across every channel and
+  are editable from the channel-less global Settings entrypoint.
 
 ## Unverified
 

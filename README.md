@@ -3,7 +3,8 @@
 A social reading tracker that follows you across Quiver channels. Search books
 via literal.club, shelve them (Want to Read / Reading / Read / Haven't
 Finished), rate and review them, keep private notes, browse other members'
-public shelves, and open the same library wherever Bookie is installed.
+public shelves, choose between detailed shelf cards and a cover grid, and open
+the same library wherever Bookie is installed.
 
 ## Data model
 
@@ -17,9 +18,11 @@ remain available for future statistics. Notes are stored separately from
 reviews and are never included in chat shares. Cached book metadata is
 **quiver-scoped** and reused by those personal libraries.
 Channel-scoped settings remain local because chat links must point back to the
-current channel's Bookie panel. The migrations in `src/migrations/` remove the
-old channel identity fields while preserving each member's existing `handle`.
-See `src/backend/schema.ts`.
+current channel's Bookie panel. Shelf display preferences are member-scoped so
+they follow each reader across channels and are editable from Bookie's global
+Settings tab. The migrations in `src/migrations/` remove the old channel
+identity fields while preserving each member's existing `handle`. See
+`src/backend/schema.ts`.
 
 ## literal.club integration
 
@@ -36,5 +39,6 @@ cached into the `books` table when a member opens its detail page, via
   (browse/filter your global library), Users (browse members and their public
   shelves), Book detail (shelf status, activity history, progress, private
   notes, rating/review).
+- `global` iframe (`src/global.tsx`) — member-wide shelf display settings.
 - `/book <title>` slash command — quick search that posts a book card
   to chat without opening the panel.

@@ -5,6 +5,10 @@ const manifest: AppManifest = {
   summary: "Keep one personal reading library across every Quiver channel.",
   entrypoints: {
     channel: "src/app.tsx",
+    global: {
+      module: "src/global.tsx",
+      title: "Settings",
+    },
     commands: {
       book: {
         file: "src/commands/book.ts",
@@ -33,6 +37,9 @@ const manifest: AppManifest = {
     publicShelf: {
       summary:
         "List the public shelf state for a Quiver member, optionally filtered by status.",
+    },
+    memberPreferences: {
+      summary: "Return the calling member's Bookie display preferences.",
     },
   },
   mutations: {
@@ -69,6 +76,9 @@ const manifest: AppManifest = {
     syncPublicShelf: {
       summary:
         "Synchronize the calling member's public shelf projection from their private library.",
+    },
+    setShelfDisplay: {
+      summary: "Choose how shelves are displayed for the calling member.",
     },
   },
   actions: {

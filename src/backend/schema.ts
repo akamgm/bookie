@@ -107,6 +107,12 @@ export default defineSchema({
     .scope("member")
     .index("by_bookId", ["bookId"]),
 
+  // Personal UI preferences follow the member across every channel and also
+  // remain available to the channel-less global settings entrypoint.
+  memberPreferences: defineTable({
+    shelfDisplay: v.union(v.literal("details"), v.literal("covers")),
+  }).scope("member"),
+
   // Channel-specific settings (such as the base URL of the channel's app
   // panel, used to build deep links back into it from chat posts).
   settings: defineTable({

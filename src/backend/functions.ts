@@ -555,6 +555,32 @@ export const publicShelf = query({
   },
 });
 
+export const memberPreferences = query({
+  args: { caller: v.string() },
+  handler: async (ctx) => {
+    const preferences = await ctx.db.query("memberPreferences").first();
+    return {
+      shelfDisplay: preferences?.shelfDisplay ?? "details",
+    };
+  },
+});
+
+export const setShelfDisplay = mutation({
+  args: {
+    caller: v.string(),
+    shelfDisplay: v.union(v.literal("details"), v.literal("covers")),
+  },
+  handler: async (ctx, { shelfDisplay }) => {
+    const preferences = await ctx.db.query("memberPreferences").first();
+    if (preferences) {
+      await ctx.db.patch(preferences._id, { shelfDisplay });
+    } else {
+      await ctx.db.insert("memberPreferences", { shelfDisplay });
+    }
+    return { shelfDisplay };
+  },
+});
+
 export const bookDetail = query({
   args: { caller: v.string(), bookId: v.id("books") },
   handler: async (ctx, { bookId }) => {
