@@ -73,7 +73,8 @@ const manifest: AppManifest = {
   },
   actions: {
     searchBooks: {
-      summary: "Search literal.club for books by title or author.",
+      summary:
+        "Search literal.club for books by title or author, optionally requiring an exact author match.",
     },
   },
   chat: {

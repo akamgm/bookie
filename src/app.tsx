@@ -60,6 +60,10 @@ type ShelfRow = {
 
 type ShelfSort = "updated" | "added" | "title" | "author";
 type ShelfFilter = "all" | Shelving["status"];
+type DiscoverSearch = {
+  query: string;
+  strictAuthor?: string;
+};
 
 type Review = {
   _id: string;
@@ -85,7 +89,7 @@ const SHELF_STATUSES = ["want", "reading", "read", "unfinished"] as const;
 
 export default function App() {
   const context = useAppContext();
-  const [discoverQuery, setDiscoverQuery] = useState<string | undefined>();
+  const [discoverSearch, setDiscoverSearch] = useState<DiscoverSearch | undefined>();
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [shelfSort, setShelfSort] = useState<ShelfSort>("updated");
   const syncPublicShelf = useMutation("syncPublicShelf");
@@ -139,7 +143,7 @@ export default function App() {
         ? { tab: "users" }
     : path === "/shelves"
       ? { tab: "shelves" }
-      : { tab: "discover", query: discoverQuery };
+      : { tab: "discover", query: discoverSearch?.query };
 
   useEffect(() => {
     // A malformed or stale URL (e.g. "/book/undefined") must not wedge the
@@ -171,7 +175,7 @@ export default function App() {
           <TabButton
             active={view.tab === "discover"}
             onClick={() => {
-              setDiscoverQuery(undefined);
+              setDiscoverSearch(undefined);
               openPath("/");
             }}
           >
@@ -195,6 +199,7 @@ export default function App() {
       {view.tab === "discover" && (
         <Discover
           initialQuery={view.query}
+          strictAuthor={discoverSearch?.strictAuthor}
           onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
         />
       )}
@@ -235,7 +240,7 @@ export default function App() {
             }
           }}
           onSearchAuthor={(author) => {
-            setDiscoverQuery(author);
+            setDiscoverSearch({ query: author, strictAuthor: author });
             openPath("/");
           }}
         />
@@ -516,9 +521,11 @@ function ShelfControls({
 
 function Discover({
   initialQuery,
+  strictAuthor,
   onOpenBook,
 }: {
   initialQuery?: string;
+  strictAuthor?: string;
   onOpenBook: (bookId: string) => void;
 }) {
   const [q, setQ] = useState(initialQuery ?? "");
@@ -535,12 +542,15 @@ function Discover({
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
 
-  async function searchFor(query: string) {
+  async function searchFor(query: string, exactAuthor?: string) {
     if (!query.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const r = await search({ query: query.trim() });
+      const r = await search({
+        query: query.trim(),
+        ...(exactAuthor ? { strictAuthor: exactAuthor } : {}),
+      });
       setResults(r as SearchHit[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed.");
@@ -551,9 +561,9 @@ function Discover({
 
   useEffect(() => {
     if (initialQuery) {
-      void searchFor(initialQuery);
+      void searchFor(initialQuery, strictAuthor);
     }
-  }, [initialQuery]);
+  }, [initialQuery, strictAuthor]);
 
   function runSearch(e: React.FormEvent) {
     e.preventDefault();

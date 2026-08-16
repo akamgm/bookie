@@ -112,10 +112,14 @@ export const cacheBookDetails = mutation({
 });
 
 export const searchBooks = action({
-  args: { query: v.string() },
-  handler: async (ctx, { query: searchQuery }) => {
+  args: {
+    query: v.string(),
+    strictAuthor: v.optional(v.string()),
+  },
+  handler: async (ctx, { query: searchQuery, strictAuthor }) => {
     const trimmed = searchQuery.trim();
     if (!trimmed) return [];
+    const exactAuthor = strictAuthor?.trim();
 
     const res = await fetch(LITERAL_ENDPOINT, {
       method: "POST",
@@ -148,19 +152,24 @@ export const searchBooks = action({
       authors: { name: string }[];
     }>;
 
-    return results.map((r) => ({
-      literalId: r.id,
-      title: r.title,
-      subtitle: r.subtitle ?? undefined,
-      authors: r.authors.map((a) => a.name),
-      coverUrl: r.cover ?? undefined,
-      isbn10: r.isbn10 ?? undefined,
-      isbn13: r.isbn13 ?? undefined,
-      pageCount: r.pageCount ?? undefined,
-      publishedDate: r.publishedDate ?? undefined,
-      publisher: r.publisher ?? undefined,
-      description: r.description ?? undefined,
-    }));
+    return results
+      .filter(
+        (r) =>
+          !exactAuthor || r.authors.some((author) => author.name === exactAuthor),
+      )
+      .map((r) => ({
+        literalId: r.id,
+        title: r.title,
+        subtitle: r.subtitle ?? undefined,
+        authors: r.authors.map((a) => a.name),
+        coverUrl: r.cover ?? undefined,
+        isbn10: r.isbn10 ?? undefined,
+        isbn13: r.isbn13 ?? undefined,
+        pageCount: r.pageCount ?? undefined,
+        publishedDate: r.publishedDate ?? undefined,
+        publisher: r.publisher ?? undefined,
+        description: r.description ?? undefined,
+      }));
   },
 });
 
