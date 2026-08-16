@@ -220,6 +220,7 @@ export default function App() {
       {view.tab === "user" && (
         <UserShelf
           handle={view.handle}
+          onOpenBook={(bookId) => openPath(`/book/${bookId}`)}
           onBack={() => {
             if (nav && nav.back) {
               nav.back("/users");
@@ -291,7 +292,15 @@ function Users({ onOpenUser }: { onOpenUser: (handle: string) => void }) {
   );
 }
 
-function UserShelf({ handle, onBack }: { handle: string; onBack: () => void }) {
+function UserShelf({
+  handle,
+  onBack,
+  onOpenBook,
+}: {
+  handle: string;
+  onBack: () => void;
+  onOpenBook: (bookId: string) => void;
+}) {
   const context = useAppContext();
   const member = useMember(handle) as
     | {
@@ -301,19 +310,34 @@ function UserShelf({ handle, onBack }: { handle: string; onBack: () => void }) {
       }
     | null;
   const [filter, setFilter] = useState<ShelfFilter>("all");
+  const [sort, setSort] = useState<ShelfSort>("updated");
   const rows = useQuery(
     "publicShelf",
     context ? { handle, status: filter === "all" ? undefined : filter } : "skip",
   ) as ShelfRow[] | undefined;
-  const sortedRows = useMemo(
-    () =>
-      [...(rows ?? [])].sort(
-        (a, b) =>
-          b.shelving.updatedAt - a.shelving.updatedAt ||
-          a.book.title.localeCompare(b.book.title, undefined, { sensitivity: "base" }),
-      ),
-    [rows],
-  );
+  const sortedRows = useMemo(() => {
+    const compareText = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" });
+
+    return [...(rows ?? [])].sort((a, b) => {
+      let comparison = 0;
+      if (sort === "updated") {
+        comparison = b.shelving.updatedAt - a.shelving.updatedAt;
+      } else if (sort === "added") {
+        comparison = b.shelving.dateAdded - a.shelving.dateAdded;
+      } else if (sort === "title") {
+        comparison = compareText(a.book.title, b.book.title);
+      } else {
+        comparison = compareText(a.book.authors[0] ?? "", b.book.authors[0] ?? "");
+      }
+
+      return (
+        comparison ||
+        compareText(a.book.title, b.book.title) ||
+        compareText(a.book._id, b.book._id)
+      );
+    });
+  }, [rows, sort]);
 
   return (
     <div style={styles.panel}>
@@ -325,20 +349,35 @@ function UserShelf({ handle, onBack }: { handle: string; onBack: () => void }) {
           {member && <div style={styles.mutedText}>@{handle}</div>}
         </div>
       </div>
-      <div style={styles.filterRow}>
-        {(["all", ...SHELF_STATUSES] as const).map((item) => (
-          <button
-            type="button"
-            key={item}
-            onClick={() => setFilter(item)}
-            style={{
-              ...styles.pillButton,
-              ...(filter === item ? styles.pillButtonActive : {}),
-            }}
+      <div style={styles.shelfToolbar}>
+        <div style={styles.filterRow}>
+          {(["all", ...SHELF_STATUSES] as const).map((item) => (
+            <button
+              type="button"
+              key={item}
+              onClick={() => setFilter(item)}
+              style={{
+                ...styles.pillButton,
+                ...(filter === item ? styles.pillButtonActive : {}),
+              }}
+            >
+              {item === "all" ? "All" : STATUS_LABEL[item]}
+            </button>
+          ))}
+        </div>
+        <label style={styles.sortControl}>
+          <span style={styles.sortLabel}>Sort by</span>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as ShelfSort)}
+            style={styles.sortSelect}
           >
-            {item === "all" ? "All" : STATUS_LABEL[item]}
-          </button>
-        ))}
+            <option value="updated">Most recently updated</option>
+            <option value="added">Date added</option>
+            <option value="title">Book title</option>
+            <option value="author">Author name</option>
+          </select>
+        </label>
       </div>
       {rows === undefined && <div style={styles.emptyState}>Loading…</div>}
       {rows && rows.length === 0 && (
@@ -350,7 +389,11 @@ function UserShelf({ handle, onBack }: { handle: string; onBack: () => void }) {
       )}
       <div style={styles.list}>
         {sortedRows.map((row) => (
-          <div key={row.book._id} style={styles.card}>
+          <div
+            key={row.book._id}
+            style={{ ...styles.card, cursor: "pointer" }}
+            onClick={() => onOpenBook(row.book._id)}
+          >
             <div style={{ display: "flex", gap: 10 }}>
               <Cover url={row.book.coverUrl} title={row.book.title} />
               <div style={{ flex: 1, minWidth: 0 }}>
