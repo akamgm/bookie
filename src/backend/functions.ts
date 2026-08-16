@@ -556,7 +556,13 @@ export const publicShelf = query({
 });
 
 export const memberPreferences = query({
-  args: { caller: v.string() },
+  // Global dispatch currently validates the bridge's argument envelope as an
+  // app field, while channel dispatch unwraps it. Accepting an optional empty
+  // envelope keeps this no-argument query callable from both entrypoints.
+  args: {
+    caller: v.string(),
+    args: v.optional(v.object({})),
+  },
   handler: async (ctx) => {
     const preferences = await ctx.db.query("memberPreferences").first();
     return {
@@ -568,16 +574,25 @@ export const memberPreferences = query({
 export const setShelfDisplay = mutation({
   args: {
     caller: v.string(),
-    shelfDisplay: v.union(v.literal("details"), v.literal("covers")),
+    shelfDisplay: v.optional(v.union(v.literal("details"), v.literal("covers"))),
+    args: v.optional(
+      v.object({
+        shelfDisplay: v.union(v.literal("details"), v.literal("covers")),
+      }),
+    ),
   },
-  handler: async (ctx, { shelfDisplay }) => {
+  handler: async (ctx, { shelfDisplay, args }) => {
+    const nextShelfDisplay = shelfDisplay ?? args?.shelfDisplay;
+    if (!nextShelfDisplay) {
+      throw new Error("A shelf display preference is required.");
+    }
     const preferences = await ctx.db.query("memberPreferences").first();
     if (preferences) {
-      await ctx.db.patch(preferences._id, { shelfDisplay });
+      await ctx.db.patch(preferences._id, { shelfDisplay: nextShelfDisplay });
     } else {
-      await ctx.db.insert("memberPreferences", { shelfDisplay });
+      await ctx.db.insert("memberPreferences", { shelfDisplay: nextShelfDisplay });
     }
-    return { shelfDisplay };
+    return { shelfDisplay: nextShelfDisplay };
   },
 });
 
