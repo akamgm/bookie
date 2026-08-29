@@ -17,4 +17,23 @@ describe("book page metadata helpers", () => {
   test("collapses publisher whitespace", () => {
     expect(extractor.clean("  Ursula   K. Le Guin\n")).toBe("Ursula K. Le Guin");
   });
+
+  test("recognizes supported bookstore and book-sharing subdomains", () => {
+    expect(extractor.siteProfile("www.goodreads.com")?.hosts).toContain("goodreads.com");
+    expect(extractor.siteProfile("app.thestorygraph.com")?.hosts).toContain("thestorygraph.com");
+    expect(extractor.siteProfile("books.google.com")?.hosts).toContain("books.google.com");
+    expect(extractor.siteProfile("www.barnesandnoble.com")?.hosts).toContain(
+      "barnesandnoble.com",
+    );
+    expect(extractor.siteProfile("example.com")).toBeUndefined();
+  });
+
+  test("classifies generic structured ISBN values by length", () => {
+    expect(
+      extractor.splitIsbns(["978-0-525-55947-4", "0-525-55949-3"]),
+    ).toEqual({
+      isbn10: "0525559493",
+      isbn13: "9780525559474",
+    });
+  });
 });

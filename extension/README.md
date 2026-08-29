@@ -1,9 +1,23 @@
 # Add to Bookie Chrome extension
 
 This Manifest V3 extension extracts book metadata from the active page and
-adds the canonical literal.club book to a configured Bookie shelf. Amazon
-product pages are supported explicitly; pages with Schema.org `Book` or
-`Product` JSON-LD often work as well.
+adds the canonical literal.club book to a configured Bookie shelf. It includes
+site-specific support for:
+
+- Amazon
+- Goodreads
+- The StoryGraph
+- Literal
+- Barnes & Noble
+- Bookshop.org
+- Kobo
+- Google Books and Google Play Books
+- Waterstones
+- AbeBooks
+
+Pages from other bookstores, publishers, libraries, and book-sharing sites
+also work when they publish Schema.org `Book` or `Product` data, standard
+Open Graph fields, or common citation metadata.
 
 ## Install for development
 
@@ -32,9 +46,10 @@ shelf immediately while open (or the next time Bookie is opened).
 
 ## Supported metadata
 
-The extractor prefers structured JSON-LD and supplements it with Amazon’s
-product title, byline, cover, ISBN, publisher, and print-length fields. Bookie
-does not trust page metadata as its canonical record: the server searches
+The extractor prefers structured JSON-LD and supplements it with site-specific
+title, author, cover, ISBN, publisher, and page-count fields. It recognizes
+lazy-loaded covers and common citation and `books:isbn` metadata. Bookie does
+not trust page metadata as its canonical record: the server searches
 literal.club and requires an ISBN match or an exact normalized title/author
 match before shelving the book.
 

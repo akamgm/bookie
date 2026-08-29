@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Add to Bookie",
-  "version": "0.1.0",
-  "description": "Add books from Amazon and other book pages to your Bookie reading list.",
+  "version": "0.2.0",
+  "description": "Add books from popular bookstores and book-sharing sites to your Bookie reading list.",
   "permissions": ["activeTab", "scripting", "storage"],
   "optional_host_permissions": ["https://*/*"],
   "action": {

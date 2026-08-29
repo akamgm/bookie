@@ -35,11 +35,12 @@ cached into the `books` table when a member opens its detail page, via
 
 ## Chrome extension
 
-The Manifest V3 extension in `extension/` extracts metadata from Amazon book
-pages (and other pages with compatible Schema.org JSON-LD) and sends it to
-Bookie’s quiver-wide public route. Configure it from the channel app’s
-**Extension** tab, which supplies the endpoint and creates a revocable
-member-specific token.
+The Manifest V3 extension in `extension/` extracts metadata from Amazon,
+Goodreads, The StoryGraph, Literal, Barnes & Noble, Bookshop.org, Kobo, Google
+Books, Waterstones, AbeBooks, and other pages with compatible structured
+metadata. It sends those hints to Bookie’s quiver-wide public route. Configure
+it from the channel app’s **Extension** tab, which supplies the endpoint and
+creates a revocable member-specific token.
 
 The public route stores only a SHA-256 token hash and resolves page metadata
 against literal.club server-side. Because anonymous routes cannot enter a
