@@ -422,7 +422,12 @@ function UserShelf({
               onClick={() => onOpenBook(row.book._id)}
             >
               <div style={{ display: "flex", gap: 10 }}>
-                <Cover url={row.book.coverUrl} title={row.book.title} />
+                <Cover
+                  url={row.book.coverUrl}
+                  title={row.book.title}
+                  isbn10={row.book.isbn10}
+                  isbn13={row.book.isbn13}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.cardTitle}>{row.book.title}</div>
                   <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
@@ -464,18 +469,61 @@ function TabButton({
 function Cover({
   url,
   title,
+  isbn10,
+  isbn13,
   shelf = false,
 }: {
   url?: string;
   title: string;
+  isbn10?: string;
+  isbn13?: string;
   shelf?: boolean;
 }) {
-  if (url) {
-    return <img src={url} alt={title} style={shelf ? styles.coverShelfImage : styles.cover} />;
+  const sources = useMemo(() => {
+    const values: string[] = [];
+    if (url) {
+      // HTTP images are blocked in Quiver's HTTPS iframe. Most cover hosts
+      // support HTTPS, so upgrade these links before trying another provider.
+      values.push(url.replace(/^http:\/\//i, "https://"));
+    }
+    for (const isbn of [isbn13, isbn10]) {
+      const normalized = isbn?.replace(/[^0-9X]/gi, "").toUpperCase();
+      if (normalized && (normalized.length === 10 || normalized.length === 13)) {
+        // default=false returns 404 for a missing Open Library cover, which
+        // lets onError continue through the remaining candidates.
+        values.push(
+          `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(normalized)}-L.jpg?default=false`,
+        );
+      }
+    }
+    return [...new Set(values)];
+  }, [url, isbn10, isbn13]);
+  const sourceKey = sources.join("|");
+  const [sourceState, setSourceState] = useState({ key: sourceKey, index: 0 });
+  const sourceIndex = sourceState.key === sourceKey ? sourceState.index : 0;
+
+  if (sources[sourceIndex]) {
+    return (
+      <img
+        src={sources[sourceIndex]}
+        alt={`${title} cover`}
+        style={shelf ? styles.coverShelfImage : styles.cover}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setSourceState({ key: sourceKey, index: sourceIndex + 1 })}
+      />
+    );
   }
   return (
-    <div style={shelf ? styles.coverShelfFallback : styles.coverFallback}>
-      <span style={{ fontSize: 18 }}>📕</span>
+    <div
+      role="img"
+      aria-label={`No cover available for ${title}`}
+      style={shelf ? styles.coverShelfFallback : styles.coverFallback}
+    >
+      <span style={shelf ? styles.coverShelfFallbackTitle : styles.coverFallbackTitle}>
+        {title}
+      </span>
     </div>
   );
 }
@@ -497,7 +545,13 @@ function CoverShelfCard({
       onClick={onOpen}
       style={styles.coverShelfCard}
     >
-      <Cover url={book.coverUrl} title={book.title} shelf />
+      <Cover
+        url={book.coverUrl}
+        title={book.title}
+        isbn10={book.isbn10}
+        isbn13={book.isbn13}
+        shelf
+      />
       <div className="cover-shelf-details" style={styles.coverShelfDetails}>
         {children}
       </div>
@@ -773,7 +827,12 @@ function Discover({
                 onClick={() => void openBook(r)}
                 disabled={openingId !== null}
               >
-                <Cover url={r.coverUrl} title={r.title} />
+                <Cover
+                  url={r.coverUrl}
+                  title={r.title}
+                  isbn10={r.isbn10}
+                  isbn13={r.isbn13}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.cardTitle}>{r.title}</div>
                   {r.subtitle && <div style={styles.mutedText}>{r.subtitle}</div>}
@@ -923,7 +982,12 @@ function Shelves({
               onClick={() => onOpenBook(row.book._id)}
             >
               <div style={{ display: "flex", gap: 10 }}>
-                <Cover url={row.book.coverUrl} title={row.book.title} />
+                <Cover
+                  url={row.book.coverUrl}
+                  title={row.book.title}
+                  isbn10={row.book.isbn10}
+                  isbn13={row.book.isbn13}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.cardTitle}>{row.book.title}</div>
                   <div style={styles.mutedText}>{row.book.authors.join(", ")}</div>
@@ -1044,7 +1108,12 @@ function BookDetail({
     <div style={{ ...styles.panel, ...styles.detailPanel }}>
       <BackBar onBack={onBack} />
       <div style={{ display: "flex", gap: 14 }}>
-        <Cover url={book.coverUrl} title={book.title} />
+        <Cover
+          url={book.coverUrl}
+          title={book.title}
+          isbn10={book.isbn10}
+          isbn13={book.isbn13}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.detailTitle}>{book.title}</div>
           {book.subtitle && <div style={styles.mutedText}>{book.subtitle}</div>}
@@ -1387,9 +1456,21 @@ const styles: Record<string, React.CSSProperties> = {
   coverShelfFallback: {
     width: "100%",
     height: "100%",
-    display: "grid",
-    placeItems: "center",
+    boxSizing: "border-box",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     background: "var(--topbar-border)",
+    padding: 12,
+    overflow: "hidden",
+  },
+  coverShelfFallbackTitle: {
+    color: "var(--text-muted)",
+    fontSize: "var(--font-size-base)",
+    fontWeight: 700,
+    lineHeight: 1.25,
+    textAlign: "center" as const,
+    overflowWrap: "anywhere" as const,
   },
   coverShelfDetails: {
     position: "absolute",
@@ -1461,11 +1542,23 @@ const styles: Record<string, React.CSSProperties> = {
   coverFallback: {
     width: 48,
     height: 72,
-    display: "grid",
-    placeItems: "center",
+    boxSizing: "border-box",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: "var(--radius-sm)",
     background: "var(--topbar-border)",
     flexShrink: 0,
+    padding: 5,
+    overflow: "hidden",
+  },
+  coverFallbackTitle: {
+    color: "var(--text-muted)",
+    fontSize: 8,
+    fontWeight: 700,
+    lineHeight: 1.15,
+    textAlign: "center" as const,
+    overflowWrap: "anywhere" as const,
   },
   pillButton: {
     padding: "4px 10px",
