@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add to Bookie</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark" aria-hidden="true">B</div>
+        <div>
+          <h1>Add to Bookie</h1>
+          <p id="page-status">Reading this page…</p>
+        </div>
+      </header>
+
+      <section id="book" class="book" hidden>
+        <img id="cover" alt="" hidden />
+        <div>
+          <strong id="title"></strong>
+          <span id="authors"></span>
+          <span id="identifier"></span>
+        </div>
+      </section>
+
+      <label>
+        Shelf
+        <select id="shelf">
+          <option value="want">Want to read</option>
+          <option value="reading">Reading</option>
+          <option value="read">Read</option>
+          <option value="unfinished">Haven't finished</option>
+        </select>
+      </label>
+
+      <button id="add" class="primary" type="button" disabled>Add to reading list</button>
+      <div id="result" role="status" aria-live="polite"></div>
+
+      <details id="settings">
+        <summary>Connection settings</summary>
+        <label>
+          Bookie API endpoint
+          <input id="endpoint" type="url" spellcheck="false" placeholder="https://…/api/books" />
+        </label>
+        <label>
+          Private token
+          <input id="token" type="password" spellcheck="false" placeholder="bookie_…" />
+        </label>
+        <button id="save" type="button">Save connection</button>
+        <p class="hint">Copy both values from Bookie’s Extension tab.</p>
+      </details>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

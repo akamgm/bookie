@@ -113,6 +113,38 @@ export default defineSchema({
     shelfDisplay: v.union(v.literal("details"), v.literal("covers")),
   }).scope("member"),
 
+  // Capability tokens used by the browser extension. Only the SHA-256 hash is
+  // retained, so a database read cannot recover a usable credential. The
+  // member field lets the anonymous public route restore the member context
+  // before calling the normal shelving mutation.
+  extensionCredentials: defineTable({
+    member: v.string(),
+    tokenHash: v.string(),
+    createdAt: v.number(),
+  })
+    .scope("quiver")
+    .index("by_member", ["member"])
+    .index("by_tokenHash", ["tokenHash"]),
+
+  // Public routes cannot enter a member-scoped database context. They place a
+  // canonical book reference here; the addressed member's authenticated UI
+  // claims it into `shelvings` and deletes it. No private shelf data is
+  // projected into this handoff table.
+  extensionImports: defineTable({
+    member: v.string(),
+    bookId: v.id("books"),
+    status: v.union(
+      v.literal("want"),
+      v.literal("reading"),
+      v.literal("read"),
+      v.literal("unfinished"),
+    ),
+    createdAt: v.number(),
+  })
+    .scope("quiver")
+    .index("by_member", ["member"])
+    .index("by_member_bookId", ["member", "bookId"]),
+
   // Channel-specific settings (such as the base URL of the channel's app
   // panel, used to build deep links back into it from chat posts).
   settings: defineTable({

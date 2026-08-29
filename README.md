@@ -33,12 +33,27 @@ exposed to the iframe). Search results are ephemeral; a book is only
 cached into the `books` table when a member opens its detail page, via
 `cacheBookDetails`, or adds it directly to a shelf, via `addToShelf`.
 
+## Chrome extension
+
+The Manifest V3 extension in `extension/` extracts metadata from Amazon book
+pages (and other pages with compatible Schema.org JSON-LD) and sends it to
+Bookie’s quiver-wide public route. Configure it from the channel app’s
+**Extension** tab, which supplies the endpoint and creates a revocable
+member-specific token.
+
+The public route stores only a SHA-256 token hash and resolves page metadata
+against literal.club server-side. Because anonymous routes cannot enter a
+member’s private database scope, it queues a minimal addressed book reference;
+the authenticated Bookie UI claims that reference through the same shelving
+logic as `addToShelf`. See `extension/README.md` for unpacked installation and
+testing instructions.
+
 ## Surfaces
 
 - `channel` iframe (`src/app.tsx`) — Discover (search + add), Shelves
   (browse/filter your global library), Users (browse members and their public
-  shelves), Book detail (shelf status, activity history, progress, private
-  notes, rating/review).
+  shelves), Extension setup, Book detail (shelf status, activity history,
+  progress, private notes, rating/review).
 - `global` iframe (`src/global.tsx`) — member-wide shelf display settings.
 - `/book <title>` slash command — quick search that posts a book card
   to chat without opening the panel.

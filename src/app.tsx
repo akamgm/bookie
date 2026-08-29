@@ -76,6 +76,7 @@ type View =
   | { tab: "discover"; query?: string }
   | { tab: "shelves" }
   | { tab: "users" }
+  | { tab: "extension" }
   | { tab: "user"; handle: string }
   | { tab: "detail"; bookId: string };
 
@@ -94,6 +95,7 @@ export default function App() {
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [shelfSort, setShelfSort] = useState<ShelfSort>("updated");
   const syncPublicShelf = useMutation("syncPublicShelf");
+  const claimExtensionImports = useMutation("claimExtensionImports");
   const preferences = useQuery(
     "memberPreferences",
     context ? {} : "skip",
@@ -123,6 +125,26 @@ export default function App() {
     }
   }, [context?.handle]);
 
+  useEffect(() => {
+    if (!context) return;
+    let stopped = false;
+    const claim = () => {
+      if (stopped || document.visibilityState === "hidden") return;
+      claimExtensionImports({}).catch((err) => {
+        console.error("Failed to claim extension imports:", err);
+      });
+    };
+    claim();
+    const interval = window.setInterval(claim, 5_000);
+    const onVisibilityChange = () => claim();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [context?.handle]);
+
   // Deep-link a book's detail view via /book/:id, so chat posts can jump
   // straight to a specific book instead of always landing on Discover.
   const nav: any = useAppPath();
@@ -147,6 +169,8 @@ export default function App() {
       ? { tab: "user", handle: selectedHandle }
       : path === "/users"
         ? { tab: "users" }
+        : path === "/extension"
+          ? { tab: "extension" }
     : path === "/shelves"
       ? { tab: "shelves" }
       : { tab: "discover", query: discoverSearch?.query };
@@ -177,7 +201,10 @@ export default function App() {
   return (
     <main style={styles.shell}>
       <style>{COVER_SHELF_CSS}</style>
-      {(view.tab === "discover" || view.tab === "shelves" || view.tab === "users") && (
+      {(view.tab === "discover" ||
+        view.tab === "shelves" ||
+        view.tab === "users" ||
+        view.tab === "extension") && (
         <nav style={styles.tabs}>
           <TabButton
             active={view.tab === "discover"}
@@ -199,6 +226,12 @@ export default function App() {
             onClick={() => openPath("/users")}
           >
             Users
+          </TabButton>
+          <TabButton
+            active={view.tab === "extension"}
+            onClick={() => openPath("/extension")}
+          >
+            Extension
           </TabButton>
         </nav>
       )}
@@ -225,6 +258,7 @@ export default function App() {
           onOpenUser={(handle) => openPath(`/users/${encodeURIComponent(handle)}`)}
         />
       )}
+      {view.tab === "extension" && <ExtensionSetup />}
       {view.tab === "user" && (
         <UserShelf
           handle={view.handle}
@@ -256,6 +290,135 @@ export default function App() {
         />
       )}
     </main>
+  );
+}
+
+function ExtensionSetup() {
+  let endpoint = "";
+  if (typeof document !== "undefined" && document.referrer) {
+    try {
+      endpoint = new URL("/bookie/api/books", document.referrer).href;
+    } catch {
+      // The shell referrer should always be an absolute Quiver URL.
+    }
+  }
+  const credential = useQuery("extensionCredentialStatus", {}) as
+    | { configured: boolean; createdAt?: number }
+    | undefined;
+  const createCredential = useAction("createExtensionCredential");
+  const [token, setToken] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState<"url" | "token" | null>(null);
+  const [error, setError] = useState("");
+
+  async function generate() {
+    setCreating(true);
+    setError("");
+    setCopied(null);
+    try {
+      const result = (await createCredential({})) as { token: string };
+      setToken(result.token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create an extension token.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function copy(value: string, field: "url" | "token") {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(field);
+    } catch {
+      setError("Copy failed. Select the value and copy it manually.");
+    }
+  }
+
+  return (
+    <div style={styles.panel}>
+      <div>
+        <h1 style={styles.sectionHeading}>Browser extension</h1>
+        <p style={styles.pageIntro}>
+          Load the extension from Bookie&apos;s <code>extension</code> directory, then
+          paste this endpoint and a private token into its popup.
+        </p>
+      </div>
+
+      <div style={styles.integrationField}>
+        <label style={styles.integrationLabel} htmlFor="extension-endpoint">
+          API endpoint
+        </label>
+        <div style={styles.searchRow}>
+          <input
+            id="extension-endpoint"
+            style={styles.searchInput}
+            readOnly
+            value={endpoint || "Resolving endpoint…"}
+          />
+          <button
+            type="button"
+            style={styles.primaryButton}
+            disabled={!endpoint}
+            onClick={() => endpoint && void copy(endpoint, "url")}
+          >
+            {copied === "url" ? "Copied" : "Copy"}
+          </button>
+        </div>
+        <span style={styles.integrationHint}>
+          This endpoint works across every channel on this Quiver.
+        </span>
+      </div>
+
+      <div style={styles.integrationField}>
+        <span style={styles.integrationLabel}>Private token</span>
+        {token ? (
+          <>
+            <div style={styles.searchRow}>
+              <input style={styles.searchInput} readOnly value={token} />
+              <button
+                type="button"
+                style={styles.primaryButton}
+                onClick={() => void copy(token, "token")}
+              >
+                {copied === "token" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <span style={styles.integrationWarning}>
+              Save this now. Bookie stores only its hash and cannot show it again.
+            </span>
+          </>
+        ) : (
+          <span style={styles.integrationHint}>
+            {credential?.configured
+              ? `A token was created ${new Date(credential.createdAt ?? 0).toLocaleDateString()}.`
+              : "No extension token has been created."}
+          </span>
+        )}
+        <button
+          type="button"
+          style={{
+            ...styles.primaryButton,
+            alignSelf: "flex-start",
+            ...(creating ? styles.buttonDisabled : {}),
+          }}
+          disabled={creating}
+          onClick={() => void generate()}
+        >
+          {creating
+            ? "Creating…"
+            : credential?.configured
+              ? "Replace token"
+              : "Create token"}
+        </button>
+        {credential?.configured && (
+          <span style={styles.integrationWarning}>
+            Replacing the token immediately disconnects extensions using the old one.
+          </span>
+        )}
+      </div>
+
+      {error && <div style={styles.errorBox}>{error}</div>}
+    </div>
   );
 }
 
@@ -1340,6 +1503,33 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--text-secondary)",
     fontSize: "var(--font-size-sm)",
     lineHeight: 1.5,
+  },
+  sectionHeading: {
+    margin: "0 0 var(--space-xs)",
+    fontSize: "var(--font-size-lg)",
+  },
+  integrationField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--space-xs)",
+    padding: "var(--space-sm)",
+    border: "1px solid var(--topbar-border)",
+    borderRadius: "var(--radius-md)",
+  },
+  integrationLabel: {
+    color: "var(--text-primary)",
+    fontSize: "var(--font-size-sm)",
+    fontWeight: 600,
+  },
+  integrationHint: {
+    color: "var(--text-muted)",
+    fontSize: "var(--font-size-xs)",
+    lineHeight: 1.4,
+  },
+  integrationWarning: {
+    color: "var(--accent-orange, var(--text-secondary))",
+    fontSize: "var(--font-size-xs)",
+    lineHeight: 1.4,
   },
   userButton: {
     width: "100%",

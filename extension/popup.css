@@ -1,0 +1,160 @@
+:root {
+  color-scheme: light dark;
+  font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+header,
+.book {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: #6d4aff;
+  color: white;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+h1 {
+  margin: 0;
+  font-size: 17px;
+}
+
+p {
+  margin: 2px 0 0;
+  color: GrayText;
+  font-size: 12px;
+}
+
+.book {
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border-radius: 10px;
+}
+
+.book img {
+  width: 44px;
+  height: 66px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.book strong,
+.book span {
+  display: block;
+}
+
+.book strong {
+  line-height: 1.25;
+}
+
+.book span {
+  margin-top: 3px;
+  color: GrayText;
+  font-size: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+input,
+select,
+button {
+  min-height: 36px;
+  border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+  border-radius: 7px;
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 7px 9px;
+}
+
+button {
+  padding: 7px 12px;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.primary {
+  border-color: #6d4aff;
+  background: #6d4aff;
+  color: white;
+}
+
+#result {
+  min-height: 20px;
+  font-size: 12px;
+}
+
+#result.error {
+  color: #d33b3b;
+}
+
+#result.success {
+  color: #238636;
+}
+
+details {
+  border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent);
+  padding-top: 12px;
+}
+
+summary {
+  cursor: pointer;
+  color: GrayText;
+  font-size: 12px;
+}
+
+details label {
+  margin-top: 10px;
+}
+
+details button {
+  margin-top: 10px;
+}
+
+.hint {
+  margin-top: 7px;
+}

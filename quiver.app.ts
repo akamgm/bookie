@@ -41,6 +41,9 @@ const manifest: AppManifest = {
     memberPreferences: {
       summary: "Return the calling member's Bookie display preferences.",
     },
+    extensionCredentialStatus: {
+      summary: "Report whether the calling member has configured a browser extension token.",
+    },
   },
   mutations: {
     cacheBookDetails: {
@@ -80,11 +83,23 @@ const manifest: AppManifest = {
     setShelfDisplay: {
       summary: "Choose how shelves are displayed for the calling member.",
     },
+    claimExtensionImports: {
+      summary: "Move browser extension imports into the calling member's reading list.",
+    },
   },
   actions: {
     searchBooks: {
       summary:
         "Search literal.club for books by title or author, optionally requiring an exact author match.",
+    },
+    createExtensionCredential: {
+      summary: "Create a new browser extension token, replacing the previous token.",
+    },
+    addBookFromExtension: {
+      summary: "Add a book to the token owner's reading list from an external browser extension.",
+      description:
+        "Authenticated with a Bookie bearer token. Resolves extracted page metadata against literal.club, then uses Bookie's normal member-scoped shelving path.",
+      publicRoute: { method: "POST", absolutePath: "/bookie/api/books" },
     },
   },
   chat: {
