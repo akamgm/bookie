@@ -19,15 +19,21 @@ Pages from other bookstores, publishers, libraries, and book-sharing sites
 also work when they publish Schema.org `Book` or `Product` data, standard
 Open Graph fields, or common citation metadata.
 
-## Install for development
+## Install a packaged build
+
+Open Bookie’s **Extension** tab and select **Download extension ZIP**. Unzip
+the package, then:
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
-3. Choose **Load unpacked** and select this `extension/` directory.
-4. In a Quiver channel, open Bookie’s **Extension** tab.
-5. Copy the API endpoint. Create a token and copy it immediately.
-6. Open the extension popup, expand **Connection settings**, paste both
+3. Choose **Load unpacked** and select the unzipped folder.
+4. Copy the API endpoint from Bookie. Create a token and copy it immediately.
+5. Open the extension popup, expand **Connection settings**, paste both
    values, and save.
+
+For development, load the repository’s `extension/` directory instead. Run
+`mise exec -- python3 scripts/package-extension.py` to rebuild the downloadable
+package after changing extension runtime files.
 
 Chrome closes extension popups when you switch back to another tab or window.
 Bookie preserves each connection field as a draft while you move between the

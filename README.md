@@ -40,7 +40,9 @@ Goodreads, The StoryGraph, Literal, Barnes & Noble, Bookshop.org, Kobo, Google
 Books, Waterstones, AbeBooks, and other pages with compatible structured
 metadata. It sends those hints to Bookie’s quiver-wide public route. Configure
 it from the channel app’s **Extension** tab, which supplies the endpoint and
-creates a revocable member-specific token.
+creates a revocable member-specific token. The tab also serves a pre-built ZIP
+containing the extension’s runtime files, so installation does not require a
+source checkout.
 
 The public route stores only a SHA-256 token hash and resolves page metadata
 against literal.club server-side. Because anonymous routes cannot enter a

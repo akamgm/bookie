@@ -10,6 +10,7 @@ import {
   useMentionCandidates,
   Avatar,
 } from "@quiver/react";
+import { EXTENSION_ARCHIVE_BASE64 } from "./generated/extensionArchive";
 
 function panelBaseFrom(url: string): string {
   if (!url) return "";
@@ -334,19 +335,49 @@ function ExtensionSetup() {
     }
   }
 
+  function downloadExtension() {
+    const encoded = atob(EXTENSION_ARCHIVE_BASE64);
+    const bytes = Uint8Array.from(encoded, (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "add-to-bookie.zip";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   return (
     <div style={styles.panel}>
       <div>
         <h1 style={styles.sectionHeading}>Browser extension</h1>
         <p style={styles.pageIntro}>
-          Load the extension from Bookie&apos;s <code>extension</code> directory, then
-          paste this endpoint and a private token into its popup.
+          Download the ready-to-use extension, then connect it with this endpoint
+          and a private token.
         </p>
       </div>
 
       <div style={styles.integrationField}>
+        <span style={styles.integrationLabel}>1. Install the extension</span>
+        <span style={styles.integrationHint}>
+          Download and unzip the package. In <code>chrome://extensions</code>, turn
+          on Developer mode, choose <strong>Load unpacked</strong>, and select the
+          unzipped folder.
+        </span>
+        <button
+          type="button"
+          style={{
+            ...styles.primaryButton,
+            alignSelf: "flex-start",
+          }}
+          onClick={downloadExtension}
+        >
+          Download extension ZIP
+        </button>
+      </div>
+
+      <div style={styles.integrationField}>
         <label style={styles.integrationLabel} htmlFor="extension-endpoint">
-          API endpoint
+          2. Copy the API endpoint
         </label>
         <div style={styles.searchRow}>
           <input
@@ -370,7 +401,7 @@ function ExtensionSetup() {
       </div>
 
       <div style={styles.integrationField}>
-        <span style={styles.integrationLabel}>Private token</span>
+        <span style={styles.integrationLabel}>3. Create a private token</span>
         {token ? (
           <>
             <div style={styles.searchRow}>
