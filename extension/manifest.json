@@ -1,12 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Add to Bookie",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Add books from popular bookstores and book-sharing sites to your Bookie reading list.",
   "permissions": ["activeTab", "scripting", "storage"],
   "optional_host_permissions": ["https://*/*"],
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
   "action": {
     "default_title": "Add to Bookie",
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png"
+    },
     "default_popup": "popup.html"
   }
 }

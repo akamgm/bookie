@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "src" / "generated" / "extensionArchive.ts"
 RUNTIME_FILES = (
     "manifest.json",
+    "icon.png",
     "popup.html",
     "popup.css",
     "popup.js",
