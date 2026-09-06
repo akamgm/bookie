@@ -17,6 +17,16 @@ const manifest: AppManifest = {
         argsHint: "<title or author>",
       },
     },
+    events: {
+      onMention: {
+        source: "platform",
+        event: "message.posted",
+        file: "src/events/onMention.ts",
+        description:
+          "Reply with a help message when a member @-mentions Bookie asking how to use it.",
+        filter: { ".mentions[]": "{{app.handle}}" },
+      },
+    },
   },
   queries: {
     channelShelf: {
@@ -103,6 +113,7 @@ const manifest: AppManifest = {
     },
   },
   chat: {
+    read: true,
     write: true,
   },
   // LITERAL_TOKEN: bearer token for the literal.club GraphQL API, used
