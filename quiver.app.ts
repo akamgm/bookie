@@ -51,6 +51,9 @@ const manifest: AppManifest = {
     memberPreferences: {
       summary: "Return the calling member's Bookie display preferences.",
     },
+    exportLibrary: {
+      summary: "Export the calling member's private reading history as portable book data.",
+    },
     extensionCredentialStatus: {
       summary: "Report whether the calling member has configured a browser extension token.",
     },
@@ -92,6 +95,9 @@ const manifest: AppManifest = {
     },
     setShelfDisplay: {
       summary: "Choose how shelves are displayed for the calling member.",
+    },
+    importLibrary: {
+      summary: "Merge a batch of portable reading history into the calling member's library.",
     },
     claimExtensionImports: {
       summary: "Move browser extension imports into the calling member's reading list.",

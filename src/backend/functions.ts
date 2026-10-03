@@ -119,6 +119,7 @@ async function upsertPublicShelving(
     progressPercent?: number;
     updatedAt: number;
     _creationTime: number;
+    dateAdded?: number;
   },
 ) {
   const existing = await ctx.db
@@ -132,7 +133,7 @@ async function upsertPublicShelving(
     bookId: shelving.bookId,
     status: shelving.status,
     progressPercent: shelving.progressPercent,
-    dateAdded: shelving._creationTime,
+    dateAdded: shelving.dateAdded ?? shelving._creationTime,
     updatedAt: shelving.updatedAt,
   };
   if (existing) {
@@ -842,7 +843,7 @@ export const channelShelf = query({
         shelving: {
           status: rows[0].status,
           progressPercent: rows[0].progressPercent,
-          dateAdded: rows[0]._creationTime,
+          dateAdded: rows[0].dateAdded ?? rows[0]._creationTime,
           updatedAt: rows[0].updatedAt,
         },
         avgRating,
@@ -925,6 +926,268 @@ export const setShelfDisplay = mutation({
       await ctx.db.insert("memberPreferences", { shelfDisplay: nextShelfDisplay });
     }
     return { shelfDisplay: nextShelfDisplay };
+  },
+});
+
+// Portable history never contains database IDs or member handles. The target
+// Quiver resolves each book against its own cache by literal.club identity.
+type TransferStatus = "want" | "reading" | "read" | "unfinished";
+type TransferEntry = {
+  book: BookMetadata;
+  shelving?: {
+    status: TransferStatus;
+    progressPercent?: number;
+    startedAt?: number;
+    finishedAt?: number;
+    dateAdded: number;
+    updatedAt: number;
+  };
+  review?: { rating: number; body?: string; updatedAt: number };
+  note?: { body: string; updatedAt: number };
+  activity: Array<{
+    fromStatus?: TransferStatus;
+    toStatus?: TransferStatus;
+    occurredAt: number;
+  }>;
+};
+
+export const exportLibrary = query({
+  args: { caller: v.string(), args: v.optional(v.object({})) },
+  handler: async (ctx) => {
+    const [shelvings, reviews, notes, activity] = await Promise.all([
+      ctx.db.query("shelvings").collect(),
+      ctx.db.query("reviews").collect(),
+      ctx.db.query("notes").collect(),
+      ctx.db.query("shelfActivity").collect(),
+    ]);
+    const byBook = new Map<string, TransferEntry>();
+    async function entry(bookId: any): Promise<TransferEntry | undefined> {
+      const key = String(bookId);
+      if (byBook.has(key)) return byBook.get(key);
+      const book = await ctx.db.get(bookId);
+      if (!book) return undefined;
+      const value: TransferEntry = {
+        book: {
+          literalId: book.literalId,
+          title: book.title,
+          authors: book.authors,
+          subtitle: book.subtitle,
+          coverUrl: book.coverUrl,
+          isbn10: book.isbn10,
+          isbn13: book.isbn13,
+          pageCount: book.pageCount,
+          publishedDate: book.publishedDate,
+          publisher: book.publisher,
+          description: book.description,
+        },
+        activity: [],
+      };
+      byBook.set(key, value);
+      return value;
+    }
+    for (const row of shelvings) {
+      const value = await entry(row.bookId);
+      if (value) value.shelving = {
+        status: row.status,
+        progressPercent: row.progressPercent,
+        startedAt: row.startedAt,
+        finishedAt: row.finishedAt,
+        dateAdded: row.dateAdded ?? row._creationTime,
+        updatedAt: row.updatedAt,
+      };
+    }
+    for (const row of reviews) {
+      const value = await entry(row.bookId);
+      if (value) value.review = {
+        rating: row.rating, body: row.body, updatedAt: row.updatedAt,
+      };
+    }
+    for (const row of notes) {
+      const value = await entry(row.bookId);
+      if (value) value.note = { body: row.body, updatedAt: row.updatedAt };
+    }
+    for (const row of activity) {
+      const value = await entry(row.bookId);
+      if (value) value.activity.push({
+        fromStatus: row.fromStatus,
+        toStatus: row.toStatus,
+        occurredAt: row.occurredAt,
+      });
+    }
+    return {
+      version: 1,
+      books: [...byBook.values()].sort((a, b) =>
+        a.book.literalId.localeCompare(b.book.literalId)),
+    };
+  },
+});
+
+function transitionKey(row: {
+  fromStatus?: TransferStatus;
+  toStatus?: TransferStatus;
+  occurredAt: number;
+}) {
+  return JSON.stringify([row.occurredAt, row.fromStatus ?? null, row.toStatus ?? null]);
+}
+
+export const importLibrary = mutation({
+  args: {
+    caller: v.string(),
+    version: v.optional(v.number()),
+    books: v.optional(v.array(v.object({
+      book: v.object({
+        literalId: v.string(),
+        title: v.string(),
+        subtitle: v.optional(v.string()),
+        authors: v.array(v.string()),
+        coverUrl: v.optional(v.string()),
+        isbn10: v.optional(v.string()),
+        isbn13: v.optional(v.string()),
+        pageCount: v.optional(v.number()),
+        publishedDate: v.optional(v.string()),
+        publisher: v.optional(v.string()),
+        description: v.optional(v.string()),
+      }),
+      shelving: v.optional(v.object({
+        status: v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished")),
+        progressPercent: v.optional(v.number()),
+        startedAt: v.optional(v.number()),
+        finishedAt: v.optional(v.number()),
+        dateAdded: v.number(),
+        updatedAt: v.number(),
+      })),
+      review: v.optional(v.object({
+        rating: v.number(),
+        body: v.optional(v.string()),
+        updatedAt: v.number(),
+      })),
+      note: v.optional(v.object({ body: v.string(), updatedAt: v.number() })),
+      activity: v.array(v.object({
+        fromStatus: v.optional(v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished"))),
+        toStatus: v.optional(v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished"))),
+        occurredAt: v.number(),
+      })),
+    }))),
+    // The global bridge may send arguments inside an `args` envelope.
+    args: v.optional(v.object({
+      version: v.number(),
+      books: v.array(v.object({
+        book: v.object({
+          literalId: v.string(),
+          title: v.string(),
+          subtitle: v.optional(v.string()),
+          authors: v.array(v.string()),
+          coverUrl: v.optional(v.string()),
+          isbn10: v.optional(v.string()),
+          isbn13: v.optional(v.string()),
+          pageCount: v.optional(v.number()),
+          publishedDate: v.optional(v.string()),
+          publisher: v.optional(v.string()),
+          description: v.optional(v.string()),
+        }),
+        shelving: v.optional(v.object({
+          status: v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished")),
+          progressPercent: v.optional(v.number()),
+          startedAt: v.optional(v.number()),
+          finishedAt: v.optional(v.number()),
+          dateAdded: v.number(),
+          updatedAt: v.number(),
+        })),
+        review: v.optional(v.object({
+          rating: v.number(),
+          body: v.optional(v.string()),
+          updatedAt: v.number(),
+        })),
+        note: v.optional(v.object({ body: v.string(), updatedAt: v.number() })),
+        activity: v.array(v.object({
+          fromStatus: v.optional(v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished"))),
+          toStatus: v.optional(v.union(v.literal("want"), v.literal("reading"), v.literal("read"), v.literal("unfinished"))),
+          occurredAt: v.number(),
+        })),
+      })),
+    })),
+  },
+  handler: async (ctx, { caller, version, books, args }) => {
+    const incoming = args?.books ?? books;
+    if (!incoming) throw new Error("No library data was provided.");
+    if ((args?.version ?? version) !== 1) throw new Error("Unsupported Bookie export version.");
+    if (incoming.length > 10 || incoming.reduce((n, row) => n + row.activity.length, 0) > 500) {
+      throw new Error("Import batches must contain at most 10 books and 500 transitions.");
+    }
+    const seen = new Set<string>();
+    for (const row of incoming) {
+      if (!row.book.literalId.trim() || !row.book.title.trim() ||
+          seen.has(row.book.literalId)) throw new Error("Invalid or duplicate book identity.");
+      seen.add(row.book.literalId);
+      const dates = [
+        row.shelving?.dateAdded, row.shelving?.updatedAt,
+        row.shelving?.startedAt, row.shelving?.finishedAt,
+        row.review?.updatedAt, row.note?.updatedAt,
+        ...row.activity.map((a) => a.occurredAt),
+      ];
+      if (dates.some((date) => date !== undefined && (!Number.isFinite(date) || date < 0))) {
+        throw new Error("Invalid history date.");
+      }
+      if (row.shelving?.progressPercent !== undefined &&
+          (!Number.isFinite(row.shelving.progressPercent) ||
+            row.shelving.progressPercent < 0 || row.shelving.progressPercent > 100)) {
+        throw new Error("Invalid reading progress.");
+      }
+      if (row.review && (row.review.rating < 0.5 || row.review.rating > 5 ||
+          Math.round(row.review.rating * 2) !== row.review.rating * 2)) {
+        throw new Error("Invalid rating.");
+      }
+      if (row.note && row.note.body.length > 5000) throw new Error("Note is too long.");
+      if (row.activity.some((a) => a.fromStatus === a.toStatus)) {
+        throw new Error("Invalid shelf transition.");
+      }
+    }
+
+    let added = 0;
+    let transitions = 0;
+    for (const row of incoming) {
+      const bookId = await upsertBook(ctx, row.book);
+      if (row.shelving) {
+        const existing = await ctx.db.query("shelvings")
+          .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId)).first();
+        if (!existing) {
+          const id = await ctx.db.insert("shelvings", { bookId, ...row.shelving });
+          const created = await ctx.db.get(id);
+          await upsertPublicShelving(ctx, caller, created);
+          added++;
+        }
+      }
+      if (row.review) {
+        const existing = await ctx.db.query("reviews")
+          .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId)).first();
+        if (!existing) await ctx.db.insert("reviews", { bookId, ...row.review });
+      }
+      if (row.note) {
+        const existing = await ctx.db.query("notes")
+          .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId)).first();
+        if (!existing) await ctx.db.insert("notes", { bookId, ...row.note });
+      }
+      // Count duplicates rather than using a Set: two identical transitions
+      // from a source library must survive, while re-import remains idempotent.
+      const existingActivity = await ctx.db.query("shelfActivity")
+        .withIndex("by_bookId", (q: any) => q.eq("bookId", bookId)).collect();
+      const counts = new Map<string, number>();
+      for (const event of existingActivity) {
+        const key = transitionKey(event);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      for (const event of row.activity) {
+        const key = transitionKey(event);
+        const count = counts.get(key) ?? 0;
+        if (count) {
+          counts.set(key, count - 1);
+        } else {
+          await ctx.db.insert("shelfActivity", { bookId, ...event });
+          transitions++;
+        }
+      }
+    }
+    return { added, transitions };
   },
 });
 

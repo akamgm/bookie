@@ -60,3 +60,19 @@ testing instructions.
 - `global` iframe (`src/global.tsx`) — member-wide shelf display settings.
 - `/book <title>` slash command — quick search that posts a book card
   to chat without opening the panel.
+
+## Moving a library between Quivers
+
+Open Bookie's global **Settings** entrypoint in the source Quiver and choose
+**Download my library**. In the destination Quiver, open Bookie Settings and
+select the downloaded JSON file, then choose **Import into my library**.
+Keep the file private: it contains reviews and private notes. The export
+includes current shelves, progress and reading dates, past shelf transitions
+(including removed books), reviews, and notes. It does not include channel
+settings, extension credentials, or other members' public shelves.
+
+Import matches books by their literal.club ID, since database IDs differ
+between Quivers. It adds missing shelf entries, reviews, and notes without
+replacing existing destination values; historical transitions are merged
+without duplicating them when the same file is imported again. Large imports
+are sent in batches, so retrying the file after an interruption is safe.

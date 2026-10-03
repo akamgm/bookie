@@ -32,6 +32,8 @@ export default defineSchema({
     progressPercent: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     finishedAt: v.optional(v.number()),
+    // Retain the original creation date when a library is imported.
+    dateAdded: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .scope("member")
